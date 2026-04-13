@@ -49,7 +49,6 @@ function MapView() {
       // Reset any active school highlights or zoom here
     }
   }, [searchTerm]);
-  s;
   const [activeCatchment, setActiveCatchment] = useState(null);
   const [mapTarget] = useState(null);
   const [loading, setLoading] = useState(true);
