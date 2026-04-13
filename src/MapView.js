@@ -23,11 +23,11 @@ L.Icon.Default.mergeOptions({
 });
 
 // 2. ZOOM HANDLER
-function ZoomHandler({ bounds }) {
+function ZoomHandler({ target }) {
   const map = useMap();
   useEffect(() => {
-    if (bounds) map.flyTo(bounds, 14, { duration: 1.5 });
-  }, [bounds, map]);
+    if (target) map.flyTo(target, 14, { duration: 1.5 });
+  }, [target, map]);
   return null;
 }
 
@@ -42,21 +42,14 @@ const SCHOOL_COLORS = {
 function MapView() {
   const [schools, setSchools] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-
-  // This helps clear everything if the user clicks the 'X'
-  useEffect(() => {
-    if (searchTerm === "") {
-      // Reset any active school highlights or zoom here
-    }
-  }, [searchTerm]);
   const [activeCatchment, setActiveCatchment] = useState(null);
-  const [mapTarget] = useState(null);
+  const [mapTarget, setMapTarget] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" ? window.innerWidth < 768 : false,
   );
+  const [showResults, setShowResults] = useState(false);
 
-  // Filters
   const [typeFilters, setTypeFilters] = useState(Object.keys(SCHOOL_COLORS));
   const [genderFilter, setGenderFilter] = useState("All");
   const [ocFilter, setOcFilter] = useState(false);
@@ -95,20 +88,98 @@ function MapView() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  const fetchBoundary = async (code) => {
+    const formattedCode = code.padStart(4, "0");
+    const layers = [1, 2, 0]; // Primary, Secondary, etc.
+    let foundData = null;
+
+    for (const layer of layers) {
+      if (foundData) break;
+
+      // We try the three most likely field name variations
+      const fields = ["school_code", "School_Code", "SCHOOL_CODE"];
+
+      for (const field of fields) {
+        if (foundData) break;
+
+        // Constructing the URL manually to ensure exact syntax
+        const baseUrl = `https://services1.arcgis.com/BDe79YI8Y57zYt8F/arcgis/rest/services/NSW_Public_School_Catchments/FeatureServer/${layer}/query`;
+        const params = new URLSearchParams({
+          where: `${field}='${formattedCode}'`, // Try as string first
+          outFields: "*",
+          f: "geojson",
+          outSR: "4326",
+        });
+
+        try {
+          const response = await fetch(`${baseUrl}?${params.toString()}`);
+
+          // If 400, it means this field/layer combo is wrong, move to next
+          if (!response.ok) continue;
+
+          const data = await response.json();
+          if (data.features && data.features.length > 0) {
+            console.log(`Matched on Layer ${layer} using ${field}`);
+            foundData = data;
+          }
+        } catch (err) {
+          console.error("Fetch failed", err);
+        }
+      }
+    }
+
+    if (foundData) {
+      setActiveCatchment(foundData);
+    } else {
+      setActiveCatchment(null);
+    }
+  };
+  // 3. SEARCH SUGGESTIONS LOGIC
+  const searchResults = useMemo(() => {
+    if (searchTerm.length < 2) return [];
+
+    const lowerTerm = searchTerm.toLowerCase();
+
+    // Get unique suburbs that match
+    const suburbs = [...new Set(schools.map((s) => s.suburb))]
+      .filter((sub) => sub.toLowerCase().includes(lowerTerm))
+      .map((sub) => ({ type: "suburb", name: sub, label: `🏠 ${sub}` }));
+
+    // Get schools that match
+    const schoolMatches = schools
+      .filter((s) => s.name.toLowerCase().includes(lowerTerm))
+      .map((s) => ({ ...s, type: "school", label: `🎓 ${s.name}` }));
+
+    return [...suburbs, ...schoolMatches].slice(0, 10);
+  }, [searchTerm, schools]);
+
+  const handleSelect = (item) => {
+    setSearchTerm(item.name);
+    setShowResults(false);
+
+    if (item.type === "school") {
+      // Zoom to school and fetch its boundary
+      setMapTarget([item.lat, item.lng]);
+      fetchBoundary(item.code);
+    } else {
+      // If a suburb was selected, find the first school in that suburb to center the map
+      const firstInSuburb = schools.find((s) => s.suburb === item.name);
+      if (firstInSuburb) {
+        setMapTarget([firstInSuburb.lat, firstInSuburb.lng]);
+      }
+    }
+  };
+
   const filteredSchools = useMemo(() => {
     return schools.filter((s) => {
       const typeLabel =
         Object.keys(SCHOOL_COLORS).find((k) => s.level.includes(k)) || "Other";
       const matchesType = typeFilters.includes(typeLabel);
-      const matchesSearch =
-        !searchTerm ||
-        s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.suburb.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesGender = genderFilter === "All" || s.gender === genderFilter;
       const matchesOC = !ocFilter || (s.oc && s.oc !== "N");
-      return matchesType && matchesSearch && matchesGender && matchesOC;
+      return matchesType && matchesGender && matchesOC;
     });
-  }, [schools, searchTerm, typeFilters, genderFilter, ocFilter]);
+  }, [schools, typeFilters, genderFilter, ocFilter]);
 
   if (loading)
     return <div style={{ padding: "20px" }}>Loading Map Data...</div>;
@@ -123,7 +194,6 @@ function MapView() {
         overflow: "hidden",
       }}
     >
-      {/* HEADER */}
       <header
         style={{
           backgroundColor: "#002b5c",
@@ -153,7 +223,7 @@ function MapView() {
       </header>
 
       <div style={{ flex: 1, position: "relative" }}>
-        {/* Search */}
+        {/* CUSTOM SEARCH BAR */}
         <div
           style={{
             position: "absolute",
@@ -161,25 +231,84 @@ function MapView() {
             left: "5%",
             width: "90%",
             maxWidth: "400px",
-            zIndex: 2000,
+            zIndex: 4000,
           }}
         >
-          <input
-            type="search"
-            placeholder="Search school or suburb..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            list="school-list" // This links the input to the datalist below
-            className="search-input"
-          />
+          <div style={{ position: "relative" }}>
+            <input
+              type="text"
+              placeholder="Search schools or suburbs..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setShowResults(true);
+              }}
+              style={{
+                width: "100%",
+                padding: "12px",
+                borderRadius: "8px",
+                border: "1px solid #ccc",
+                boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+                fontSize: "14px",
+              }}
+            />
+            {searchTerm && (
+              <button
+                onClick={() => {
+                  setSearchTerm("");
+                  setActiveCatchment(null);
+                }}
+                style={{
+                  position: "absolute",
+                  right: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  border: "none",
+                  background: "none",
+                  fontSize: "18px",
+                  cursor: "pointer",
+                  color: "#999",
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {showResults && searchResults.length > 0 && (
+            <ul
+              style={{
+                background: "white",
+                listStyle: "none",
+                margin: "4px 0 0",
+                padding: "0",
+                borderRadius: "8px",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                maxHeight: "300px",
+                overflowY: "auto",
+                border: "1px solid #eee",
+              }}
+            >
+              {searchResults.map((item, i) => (
+                <li
+                  key={i}
+                  onClick={() => handleSelect(item)}
+                  style={{
+                    padding: "12px",
+                    borderBottom: "1px solid #f0f0f0",
+                    cursor: "pointer",
+                    fontSize: "13px",
+                    hover: { background: "#f9f9f9" },
+                  }}
+                  onMouseEnter={(e) => (e.target.style.background = "#f9f9f9")}
+                  onMouseLeave={(e) => (e.target.style.background = "white")}
+                >
+                  {item.label}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-        <datalist id="school-list">
-          {/* Replace 'allSchools' with whatever your data array is called */}
-          {allSchools.map((school, index) => (
-            <option key={index} value={school.name} />
-          ))}
-          {/* If you have a separate list for suburbs, map those here too */}
-        </datalist>
 
         {activeCatchment && (
           <button
@@ -211,15 +340,22 @@ function MapView() {
         >
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution="&copy; OpenStreetMap | Data: NSW Dept of Education"
+            attribution="&copy; OpenStreetMap"
           />
           <ZoomControl position="bottomright" />
-          <ZoomHandler bounds={mapTarget} />
+          <ZoomHandler target={mapTarget} />
 
           {activeCatchment && (
             <GeoJSON
+              key={JSON.stringify(activeCatchment)}
               data={activeCatchment}
               style={{ color: "#ff4444", weight: 3, fillOpacity: 0.2 }}
+              onEachFeature={(feature, layer) => {
+                // This helps center the map on the catchment
+                if (feature.geometry) {
+                  // map.fitBounds(layer.getBounds()); // Optional: Auto-zoom to boundary
+                }
+              }}
             />
           )}
 
@@ -239,28 +375,20 @@ function MapView() {
                 weight: 1,
                 fillOpacity: 0.8,
               }}
-              eventHandlers={{
-                click: () => {
-                  const url = `https://services1.arcgis.com/BDe79YI8Y57zYt8F/arcgis/rest/services/NSW_Public_School_Catchments/FeatureServer/1/query?where=school_code='${school.code}'&outFields=*&f=geojson&outSR=4326`;
-                  fetch(url)
-                    .then((r) => r.json())
-                    .then((d) => d.features?.length && setActiveCatchment(d));
-                },
-              }}
+              eventHandlers={{ click: () => fetchBoundary(school.code) }}
             >
               <Popup>
                 <div style={{ minWidth: "180px", padding: "2px" }}>
-                  {/* Title as Website Link */}
                   <div
-                    onClick={() => {
-                      if (!school.url) return;
+                    onClick={() =>
+                      school.url &&
                       window.open(
                         school.url.includes("http")
                           ? school.url
                           : `https://${school.url}`,
                         "_blank",
-                      );
-                    }}
+                      )
+                    }
                     style={{
                       color: "#1E88E5",
                       fontSize: "15px",
@@ -272,8 +400,6 @@ function MapView() {
                   >
                     {school.name}
                   </div>
-
-                  {/* Full Info List Restored */}
                   <div
                     style={{
                       fontSize: "12px",
@@ -296,8 +422,6 @@ function MapView() {
                       </span>
                     )}
                   </div>
-
-                  {/* Smaller, Subtle Verification Button */}
                   <div
                     onClick={() =>
                       window.open(
@@ -324,7 +448,6 @@ function MapView() {
           ))}
         </MapContainer>
 
-        {/* Filter Panel */}
         <div
           style={{
             position: "absolute",
@@ -378,10 +501,10 @@ function MapView() {
             <div
               key={label}
               onClick={() =>
-                setTypeFilters((prev) =>
-                  prev.includes(label)
-                    ? prev.filter((l) => l !== label)
-                    : [...prev, label],
+                setTypeFilters((p) =>
+                  p.includes(label)
+                    ? p.filter((l) => l !== label)
+                    : [...p, label],
                 )
               }
               style={{
@@ -410,7 +533,7 @@ function MapView() {
       <footer
         style={{
           backgroundColor: "#f1f1f1",
-          padding: "10px",
+          padding: "6px 10px",
           textAlign: "center",
           fontSize: "10px",
           color: "#555",
@@ -418,14 +541,11 @@ function MapView() {
           zIndex: 3000,
         }}
       >
-        <div style={{ marginBottom: "4px" }}>
-          <strong>Data Current as of:</strong> April 2026
-        </div>
-        <p style={{ margin: "0 0 4px" }}>
+        <p style={{ margin: "0" }}>
           <strong>Disclaimer:</strong> This is NOT an official government
           website and is not affiliated with the NSW Dept of Education.
         </p>
-        <p style={{ margin: 0, lineHeight: "1.4" }}>
+        <p style={{ margin: "2px 0 0", lineHeight: "1.2" }}>
           Tool for informational purposes only. Catchments change without
           notice.{" "}
           <strong>
@@ -433,8 +553,8 @@ function MapView() {
             decisions.
           </strong>
           <br />
-          Data Source: NSW Dept of Education Open Data (Last Records:
-          07/04/2026).
+          Data Source: NSW Dept of Education Open Data (Last Records: April
+          2026).
         </p>
       </footer>
     </div>
@@ -442,4 +562,3 @@ function MapView() {
 }
 
 export default MapView;
-// change test

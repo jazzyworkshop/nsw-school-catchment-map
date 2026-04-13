@@ -13,3 +13,15 @@ body {
   display: flex;
   flex-direction: column;
 }
+/* Force the 'X' clear button to show up in Chrome/Edge */
+input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: searchfield-cancel-button;
+  display: block;
+  cursor: pointer;
+}
+
+/* Ensure the datalist dropdown stays on top of the map */
+.search-input {
+  position: relative;
+  z-index: 4000;
+}
