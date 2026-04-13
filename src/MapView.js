@@ -192,7 +192,7 @@ function MapView() {
             </h1>
           </div>
           <p style={{ margin: "2px 0 0", fontSize: "11px", opacity: 0.8 }}>
-            Independent boundary tool (Unofficial)
+            NSW Public School intake boundary tool (Unofficial)
           </p>
         </div>
       </header>
