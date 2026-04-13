@@ -89,23 +89,25 @@ function MapView() {
   }, []);
 
   const fetchBoundary = async (code) => {
-    const formattedCode = code.padStart(4, "0");
-    const layers = [1, 2, 0]; // Primary, Secondary, etc.
+    // Ensure we have a clean number (removes leading zeros if necessary)
+    const numericCode = parseInt(code, 10);
+    const layers = [1, 2, 0];
     let foundData = null;
 
     for (const layer of layers) {
       if (foundData) break;
 
-      // We try the three most likely field name variations
+      // We try the three most likely field names, but WITHOUT quotes around the value
       const fields = ["school_code", "School_Code", "SCHOOL_CODE"];
 
       for (const field of fields) {
         if (foundData) break;
 
-        // Constructing the URL manually to ensure exact syntax
         const baseUrl = `https://services1.arcgis.com/BDe79YI8Y57zYt8F/arcgis/rest/services/NSW_Public_School_Catchments/FeatureServer/${layer}/query`;
+
         const params = new URLSearchParams({
-          where: `${field}='${formattedCode}'`, // Try as string first
+          // Removed the single quotes around the code here
+          where: `${field}=${numericCode}`,
           outFields: "*",
           f: "geojson",
           outSR: "4326",
@@ -114,12 +116,30 @@ function MapView() {
         try {
           const response = await fetch(`${baseUrl}?${params.toString()}`);
 
-          // If 400, it means this field/layer combo is wrong, move to next
-          if (!response.ok) continue;
+          // If the server still gives a 400, it might actually want the quotes.
+          // Let's handle that fallback immediately.
+          if (!response.ok) {
+            const fallbackParams = new URLSearchParams({
+              where: `${field}='${code.padStart(4, "0")}'`,
+              outFields: "*",
+              f: "geojson",
+              outSR: "4326",
+            });
+            const fallbackRes = await fetch(
+              `${baseUrl}?${fallbackParams.toString()}`,
+            );
+            if (!fallbackRes.ok) continue;
+
+            const fallbackData = await fallbackRes.json();
+            if (fallbackData.features?.length > 0) {
+              foundData = fallbackData;
+              break;
+            }
+            continue;
+          }
 
           const data = await response.json();
           if (data.features && data.features.length > 0) {
-            console.log(`Matched on Layer ${layer} using ${field}`);
             foundData = data;
           }
         } catch (err) {
@@ -134,6 +154,7 @@ function MapView() {
       setActiveCatchment(null);
     }
   };
+
   // 3. SEARCH SUGGESTIONS LOGIC
   const searchResults = useMemo(() => {
     if (searchTerm.length < 2) return [];
