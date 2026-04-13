@@ -42,6 +42,14 @@ const SCHOOL_COLORS = {
 function MapView() {
   const [schools, setSchools] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+
+  // This helps clear everything if the user clicks the 'X'
+  useEffect(() => {
+    if (searchTerm === "") {
+      // Reset any active school highlights or zoom here
+    }
+  }, [searchTerm]);
+  s;
   const [activeCatchment, setActiveCatchment] = useState(null);
   const [mapTarget] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -158,21 +166,21 @@ function MapView() {
           }}
         >
           <input
-            type="text"
+            type="search"
             placeholder="Search school or suburb..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "12px 20px",
-              borderRadius: "30px",
-              border: "1px solid #ccc",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-              fontSize: "16px",
-              boxSizing: "border-box",
-            }}
+            list="school-list" // This links the input to the datalist below
+            className="search-input"
           />
         </div>
+        <datalist id="school-list">
+          {/* Replace 'allSchools' with whatever your data array is called */}
+          {allSchools.map((school, index) => (
+            <option key={index} value={school.name} />
+          ))}
+          {/* If you have a separate list for suburbs, map those here too */}
+        </datalist>
 
         {activeCatchment && (
           <button
