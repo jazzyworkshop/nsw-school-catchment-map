@@ -43,7 +43,7 @@ function MapView() {
   const [schools, setSchools] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeCatchment, setActiveCatchment] = useState(null);
-  const [mapTarget] = useState(...)
+  const [mapTarget, setMapTarget] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" ? window.innerWidth < 768 : false,
