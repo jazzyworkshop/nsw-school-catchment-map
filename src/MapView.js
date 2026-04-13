@@ -89,36 +89,24 @@ function MapView() {
   }, []);
 
   const fetchBoundary = async (code) => {
-    // Always zero-pad to 4 digits as a string, wrapped in single quotes for the query
-    const paddedCode = String(parseInt(code, 10)).padStart(4, "0");
-    const layers = [0, 1, 2];
-
-    for (const layer of layers) {
-      const baseUrl = `https://services1.arcgis.com/BDe79YI8Y57zYt8F/arcgis/rest/services/NSW_Public_School_Catchments/FeatureServer/${layer}/query`;
-
-      const params = new URLSearchParams({
-        where: `school_code='${paddedCode}'`,
-        outFields: "*",
-        f: "geojson",
-        outSR: "4326",
-      });
-
-      try {
-        const response = await fetch(`${baseUrl}?${params.toString()}`);
-        if (!response.ok) continue;
-
-        const data = await response.json();
-        if (data.features?.length > 0) {
-          setActiveCatchment(data);
-          return;
-        }
-      } catch (err) {
-        console.error(`Layer ${layer} fetch failed:`, err);
-      }
+    // Load and cache the GeoJSON on first call
+    if (!window._catchmentCache) {
+      const res = await fetch("/catchments.geojson");
+      window._catchmentCache = await res.json();
     }
 
-    // No boundary found across all layers
-    setActiveCatchment(null);
+    const paddedCode = String(parseInt(code, 10)).padStart(4, "0");
+
+    const feature = window._catchmentCache.features.find(
+      (f) => String(f.properties.USE_ID).padStart(4, "0") === paddedCode,
+    );
+
+    if (feature) {
+      setActiveCatchment({ type: "FeatureCollection", features: [feature] });
+    } else {
+      setActiveCatchment(null);
+      console.log("No catchment found for code:", paddedCode);
+    }
   };
 
   // 3. SEARCH SUGGESTIONS LOGIC
