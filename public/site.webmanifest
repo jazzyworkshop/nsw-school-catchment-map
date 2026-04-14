@@ -1,6 +1,6 @@
 {
   "name": "Local School Map",
-  "short_name": "LSM",
+  "short_name": "LMS",
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",
@@ -15,7 +15,7 @@
       "purpose": "maskable"
     }
   ],
-  "theme_color": "#0039ac",
+  "theme_color": "#0070c0",
   "background_color": "#ffffff",
   "display": "standalone"
 }
