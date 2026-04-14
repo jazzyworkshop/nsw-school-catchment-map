@@ -1,9 +1,8 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   MapContainer,
   TileLayer,
   CircleMarker,
-  Popup,
   GeoJSON,
   useMap,
   ZoomControl,
@@ -11,7 +10,51 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-// 1. FIXED LEAFLET ICONS
+/* ────────────────────────────────────────────────────────────────
+   MAP ERROR BOUNDARY
+   ──────────────────────────────────────────────────────────────── */
+class MapErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Map Error Caught:", error, errorInfo);
+    setTimeout(() => {
+      this.setState({ hasError: false });
+    }, 1000);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div
+          style={{
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "#f8f9fa",
+            color: "#002b5c",
+            flexDirection: "column",
+          }}
+        >
+          <p>🔄 Resetting map layers...</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────
+   LEAFLET ICON FIX
+   ──────────────────────────────────────────────────────────────── */
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl:
@@ -22,7 +65,9 @@ L.Icon.Default.mergeOptions({
     "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
 });
 
-// 2. ZOOM HANDLER
+/* ────────────────────────────────────────────────────────────────
+   ZOOM HANDLER
+   ──────────────────────────────────────────────────────────────── */
 function ZoomHandler({ target }) {
   const map = useMap();
   useEffect(() => {
@@ -31,6 +76,9 @@ function ZoomHandler({ target }) {
   return null;
 }
 
+/* ────────────────────────────────────────────────────────────────
+   CONSTANTS
+   ──────────────────────────────────────────────────────────────── */
 const SCHOOL_COLORS = {
   Primary: "#43A047",
   Secondary: "#1E88E5",
@@ -39,20 +87,951 @@ const SCHOOL_COLORS = {
   Other: "#E91E63",
 };
 
-function MapView() {
+const SELECTIVE_LABELS = {
+  "Fully selective": {
+    label: "Fully Selective",
+    color: "#6a0dad",
+    bg: "#f3e8ff",
+  },
+  "Partially selective": {
+    label: "Partially Selective",
+    color: "#b45309",
+    bg: "#fef3c7",
+  },
+  No: { label: "", color: "", bg: "" },
+  "": { label: "", color: "", bg: "" },
+};
+
+const HEADER_HEIGHT = 56;
+
+/* ────────────────────────────────────────────────────────────────
+   INLINE STYLES
+   ──────────────────────────────────────────────────────────────── */
+const styles = {
+  appShell: {
+    display: "flex",
+    flexDirection: "column",
+    height: "100vh",
+    width: "100vw",
+    overflow: "hidden",
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  },
+  header: {
+    backgroundColor: "#002b5c",
+    color: "white",
+    padding: "10px 16px",
+    zIndex: 5100,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexShrink: 0,
+    height: HEADER_HEIGHT,
+  },
+  headerTitle: { margin: 0 },
+  headerSub: { margin: "2px 0 0", fontSize: "11px", opacity: 0.7 },
+  mapArea: { flex: 1, position: "relative", overflow: "hidden" },
+  footer: {
+    backgroundColor: "#f1f1f1",
+    padding: "5px 10px",
+    textAlign: "center",
+    fontSize: "10px",
+    color: "#555",
+    borderTop: "1px solid #ddd",
+    zIndex: 3000,
+    flexShrink: 0,
+    lineHeight: 1.4,
+  },
+  searchWrap: {
+    position: "absolute",
+    top: 12,
+    left: "50%",
+    transform: "translateX(-50%)",
+    width: "calc(100% - 100px)",
+    maxWidth: "420px",
+    zIndex: 4000,
+  },
+  searchInner: { position: "relative" },
+  searchInput: {
+    width: "100%",
+    padding: "11px 40px 11px 14px",
+    borderRadius: "10px",
+    border: "1px solid #ccc",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+    fontSize: "14px",
+    outline: "none",
+    boxSizing: "border-box",
+  },
+  searchClear: {
+    position: "absolute",
+    right: 10,
+    top: "50%",
+    transform: "translateY(-50%)",
+    border: "none",
+    background: "none",
+    fontSize: "16px",
+    cursor: "pointer",
+    color: "#999",
+  },
+  searchDropdown: {
+    background: "white",
+    listStyle: "none",
+    margin: "4px 0 0",
+    padding: 0,
+    borderRadius: "10px",
+    boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
+    maxHeight: "280px",
+    overflowY: "auto",
+    border: "1px solid #eee",
+  },
+  searchItem: {
+    padding: "11px 14px",
+    borderBottom: "1px solid #f0f0f0",
+    cursor: "pointer",
+    fontSize: "13px",
+  },
+  filterToggleBtn: {
+    background: "white",
+    border: "none",
+    borderRadius: "10px",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.15)",
+    cursor: "pointer",
+    padding: "8px 10px",
+    fontSize: "18px",
+    lineHeight: 1,
+    color: "#002b5c",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  backdrop: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.3)",
+    zIndex: 4500,
+  },
+  clearPill: {
+    position: "absolute",
+    top: 68,
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: 2000,
+    background: "#ff4444",
+    color: "white",
+    border: "none",
+    padding: "6px 14px",
+    borderRadius: "20px",
+    fontSize: "12px",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+};
+
+/* ────────────────────────────────────────────────────────────────
+   FILTER PANEL
+   ──────────────────────────────────────────────────────────────── */
+function FilterPanel({
+  isMobile,
+  isOpen,
+  onToggle,
+  typeFilters,
+  setTypeFilters,
+  genderFilter,
+  setGenderFilter,
+  ocFilter,
+  setOcFilter,
+  selectiveFilter,
+  setSelectiveFilter,
+  showFuture,
+  setShowFuture,
+  onClearFilters,
+}) {
+  if (isMobile) {
+    return (
+      <>
+        {isOpen && <div style={styles.backdrop} onClick={onToggle} />}
+        <div
+          style={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            background: "white",
+            zIndex: 5000,
+            borderRadius: "16px 16px 0 0",
+            boxShadow: "0 -4px 20px rgba(0,0,0,0.2)",
+            padding: "0 0 24px 0",
+            maxHeight: "80vh",
+            overflowY: "auto",
+            transform: isOpen ? "translateY(0)" : "translateY(100%)",
+            transition: "transform 0.28s cubic-bezier(0.4,0,0.2,1)",
+          }}
+        >
+          <div
+            onClick={onToggle}
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              padding: "12px 0 4px",
+              cursor: "pointer",
+            }}
+          >
+            <div
+              style={{
+                width: 40,
+                height: 4,
+                background: "#ddd",
+                borderRadius: 2,
+              }}
+            />
+          </div>
+
+          <FilterContent
+            typeFilters={typeFilters}
+            setTypeFilters={setTypeFilters}
+            genderFilter={genderFilter}
+            setGenderFilter={setGenderFilter}
+            ocFilter={ocFilter}
+            setOcFilter={setOcFilter}
+            selectiveFilter={selectiveFilter}
+            setSelectiveFilter={setSelectiveFilter}
+            showFuture={showFuture}
+            setShowFuture={setShowFuture}
+            onClearFilters={onClearFilters}
+          />
+        </div>
+      </>
+    );
+  }
+
+  const PANEL_WIDTH = 260;
+  const TAB_W = 22;
+  const TAB_H = 64;
+  const tabLeft = isOpen ? PANEL_WIDTH : 0;
+
+  return (
+    <>
+      {isOpen && (
+        <div
+          style={{
+            ...styles.backdrop,
+            top: HEADER_HEIGHT,
+            zIndex: 4900,
+          }}
+          onClick={onToggle}
+        />
+      )}
+
+      <div
+        style={{
+          position: "fixed",
+          top: HEADER_HEIGHT,
+          bottom: 0,
+          left: 0,
+          width: PANEL_WIDTH,
+          background: "white",
+          zIndex: 5000,
+          overflowY: "auto",
+          overflowX: "hidden",
+          direction: "rtl",
+          transform: isOpen ? "translateX(0)" : `translateX(-${PANEL_WIDTH}px)`,
+          transition: "transform 0.28s cubic-bezier(0.4,0,0.2,1)",
+          boxShadow: isOpen ? "4px 0 20px rgba(0,0,0,0.15)" : "none",
+        }}
+      >
+        <div style={{ direction: "ltr" }}>
+          <FilterContent
+            typeFilters={typeFilters}
+            setTypeFilters={setTypeFilters}
+            genderFilter={genderFilter}
+            setGenderFilter={setGenderFilter}
+            ocFilter={ocFilter}
+            setOcFilter={setOcFilter}
+            selectiveFilter={selectiveFilter}
+            setSelectiveFilter={setSelectiveFilter}
+            showFuture={showFuture}
+            setShowFuture={setShowFuture}
+            onClearFilters={onClearFilters}
+          />
+        </div>
+      </div>
+
+      <div
+        onClick={onToggle}
+        title={isOpen ? "Close filters" : "Open filters"}
+        style={{
+          position: "fixed",
+          top: HEADER_HEIGHT + 80,
+          left: tabLeft,
+          width: TAB_W,
+          height: TAB_H,
+          background: "#002b5c",
+          borderRadius: "0 10px 10px 0",
+          cursor: "pointer",
+          zIndex: 5001,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "3px 2px 10px rgba(0,0,0,0.25)",
+          transition: "left 0.28s cubic-bezier(0.4,0,0.2,1)",
+          userSelect: "none",
+        }}
+      >
+        <span
+          style={{
+            color: "white",
+            fontSize: "16px",
+            fontWeight: 700,
+            lineHeight: 1,
+            marginLeft: isOpen ? -1 : 2,
+          }}
+        >
+          {isOpen ? "‹" : "›"}
+        </span>
+      </div>
+    </>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────
+   FILTER CONTENT
+   ──────────────────────────────────────────────────────────────── */
+function FilterContent({
+  typeFilters,
+  setTypeFilters,
+  genderFilter,
+  setGenderFilter,
+  ocFilter,
+  setOcFilter,
+  selectiveFilter,
+  setSelectiveFilter,
+  showFuture,
+  setShowFuture,
+  onClearFilters,
+}) {
+  return (
+    <div>
+      <div
+        style={{
+          padding: "18px 20px 12px",
+          borderBottom: "1px solid #f0f0f0",
+        }}
+      >
+        <span style={{ fontWeight: 700, fontSize: "15px", color: "#002b5c" }}>
+          🔍 Filter Schools
+        </span>
+      </div>
+
+      <div style={{ padding: "16px 20px" }}>
+        {/* School Type */}
+        <div style={{ marginBottom: "18px" }}>
+          <SectionLabel>School Type</SectionLabel>
+          {Object.entries(SCHOOL_COLORS).map(([label, color]) => (
+            <div
+              key={label}
+              onClick={() =>
+                setTypeFilters((p) =>
+                  p.includes(label)
+                    ? p.filter((l) => l !== label)
+                    : [...p, label],
+                )
+              }
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "6px 10px",
+                marginBottom: "4px",
+                borderRadius: "8px",
+                cursor: "pointer",
+                background: typeFilters.includes(label)
+                  ? `${color}18`
+                  : "#f9f9f9",
+                border: `1px solid ${
+                  typeFilters.includes(label) ? color : "#eee"
+                }`,
+                transition: "all 0.15s",
+              }}
+            >
+              <div
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: color,
+                  marginRight: 10,
+                  flexShrink: 0,
+                }}
+              />
+              <span
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  color: typeFilters.includes(label) ? "#222" : "#aaa",
+                }}
+              >
+                {label}
+              </span>
+              {typeFilters.includes(label) && (
+                <span
+                  style={{
+                    marginLeft: "auto",
+                    color: color,
+                    fontSize: "14px",
+                  }}
+                >
+                  ✓
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Gender */}
+        <div style={{ marginBottom: "18px" }}>
+          <SectionLabel>Gender</SectionLabel>
+          {[
+            { value: "All", label: "All" },
+            { value: "Coed", label: "Co-educational" },
+            { value: "Boys", label: "Boys Only" },
+            { value: "Girls", label: "Girls Only" },
+          ].map((opt) => (
+            <label
+              key={opt.value}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "5px 0",
+                cursor: "pointer",
+                fontSize: "13px",
+              }}
+            >
+              <input
+                type="radio"
+                name="gender"
+                value={opt.value}
+                checked={genderFilter === opt.value}
+                onChange={() => setGenderFilter(opt.value)}
+                style={{ marginRight: 8 }}
+              />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+
+        {/* Selective Status */}
+        <div style={{ marginBottom: "18px" }}>
+          <SectionLabel>Selective Status</SectionLabel>
+          {[
+            { value: "all", label: "All Schools" },
+            { value: "Fully selective", label: "Fully Selective" },
+            { value: "Partially selective", label: "Partially Selective" },
+            { value: "non", label: "Non-Selective Only" },
+          ].map((opt) => (
+            <label
+              key={opt.value}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "5px 0",
+                cursor: "pointer",
+                fontSize: "13px",
+              }}
+            >
+              <input
+                type="radio"
+                name="selective"
+                value={opt.value}
+                checked={selectiveFilter === opt.value}
+                onChange={() => setSelectiveFilter(opt.value)}
+                style={{ marginRight: 8 }}
+              />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+
+        {/* Overlays */}
+        <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: "14px" }}>
+          <SectionLabel>Overlays</SectionLabel>
+          <ToggleRow
+            checked={ocFilter}
+            onChange={setOcFilter}
+            label="Opportunity Classes only"
+            icon="⭐"
+            tooltip="Filters to schools that run an Opportunity Class (OC) — selective primary classes for high-achieving students in Years 5 & 6."
+          />
+          <ToggleRow
+            checked={showFuture}
+            onChange={setShowFuture}
+            label="Show future zone changes"
+            icon="🔮"
+            sublabel="Dashed orange boundaries"
+            tooltip="Shows planned catchment boundary changes that have been announced but not yet in effect. Only visible where a zone change is scheduled — most schools will show nothing extra."
+          />
+        </div>
+
+        {/* Clear filters button */}
+        <button
+          type="button"
+          onClick={onClearFilters}
+          style={{
+            marginTop: "14px",
+            width: "100%",
+            padding: "10px 12px",
+            borderRadius: "8px",
+            border: "none",
+            cursor: "pointer",
+            background: "#e63946",
+            color: "white",
+            fontWeight: 700,
+            fontSize: "14px",
+            textAlign: "center",
+            lineHeight: 1.2,
+          }}
+        >
+          Clear filters
+          <div style={{ fontSize: "11px", opacity: 0.9 }}>show all schools</div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SectionLabel({ children }) {
+  return (
+    <div
+      style={{
+        fontSize: "11px",
+        fontWeight: 700,
+        color: "#888",
+        textTransform: "uppercase",
+        letterSpacing: "0.05em",
+        marginBottom: "8px",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function ToggleRow({ checked, onChange, label, icon, sublabel, tooltip }) {
+  const [showTip, setShowTip] = useState(false);
+  return (
+    <div
+      onClick={() => onChange((v) => !v)}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        padding: "8px 10px",
+        marginBottom: "6px",
+        borderRadius: "8px",
+        cursor: "pointer",
+        background: checked ? "#e8f5e9" : "#f9f9f9",
+        border: `1px solid ${checked ? "#43A047" : "#eee"}`,
+        transition: "all 0.15s",
+        position: "relative",
+      }}
+    >
+      <span style={{ fontSize: "15px", marginRight: 10 }}>{icon}</span>
+      <div style={{ flex: 1 }}>
+        <div
+          style={{
+            fontSize: "13px",
+            fontWeight: 500,
+            color: checked ? "#2e7d32" : "#555",
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+          }}
+        >
+          {label}
+          {tooltip && (
+            <span
+              onClick={(e) => e.stopPropagation()}
+              onMouseEnter={() => setShowTip(true)}
+              onMouseLeave={() => setShowTip(false)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 15,
+                height: 15,
+                borderRadius: "50%",
+                background: "#ccc",
+                color: "white",
+                fontSize: "9px",
+                fontWeight: 700,
+                cursor: "default",
+                flexShrink: 0,
+                lineHeight: 1,
+              }}
+            >
+              i
+            </span>
+          )}
+        </div>
+        {sublabel && (
+          <div style={{ fontSize: "11px", color: "#999", marginTop: 1 }}>
+            {sublabel}
+          </div>
+        )}
+      </div>
+
+      {tooltip && showTip && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "calc(100% + 6px)",
+            left: 8,
+            right: 8,
+            background: "#222",
+            color: "white",
+            fontSize: "11px",
+            padding: "7px 10px",
+            borderRadius: 7,
+            lineHeight: 1.5,
+            zIndex: 9999,
+            pointerEvents: "none",
+            boxShadow: "0 2px 10px rgba(0,0,0,0.25)",
+          }}
+        >
+          {tooltip}
+          <div
+            style={{
+              position: "absolute",
+              bottom: -5,
+              left: 16,
+              width: 10,
+              height: 10,
+              background: "#222",
+              transform: "rotate(45deg)",
+            }}
+          />
+        </div>
+      )}
+
+      <div
+        style={{
+          width: 36,
+          height: 20,
+          borderRadius: 10,
+          background: checked ? "#43A047" : "#ddd",
+          position: "relative",
+          transition: "background 0.2s",
+          flexShrink: 0,
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            top: 2,
+            left: checked ? 18 : 2,
+            width: 16,
+            height: 16,
+            borderRadius: "50%",
+            background: "white",
+            transition: "left 0.2s",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────
+   SCHOOL INFO CARD (modern list + updated School Finder label)
+   ──────────────────────────────────────────────────────────────── */
+function SchoolInfoCard({ school, isMobile, onClose }) {
+  if (!school) return null;
+
+  const selectiveInfo =
+    SELECTIVE_LABELS[school.selective] || SELECTIVE_LABELS[""];
+  const typeColor =
+    SCHOOL_COLORS[
+      Object.keys(SCHOOL_COLORS).find((k) => school.level.includes(k)) ||
+        "Other"
+    ] || "#888";
+
+  const mySchoolUrl = `https://www.myschool.edu.au/search?schoolName=${encodeURIComponent(
+    school.name,
+  )}&suburb=${encodeURIComponent(school.suburb)}`;
+
+  const schoolFinderUrl = `https://schoolfinder.education.nsw.gov.au/index.php?schoolCode=${school.code}`;
+
+  const betterEducationUrl =
+    "https://bettereducation.com.au/school/secondary/nsw/sydney-high-school-rankings.aspx";
+
+  const ocDisplay =
+    school.oc && school.oc !== "N" ? "Yes (OC classes available)" : "n/a";
+
+  const genderDisplay =
+    school.gender === "Coed"
+      ? "Co-ed"
+      : school.gender === "Boys"
+        ? "Boys"
+        : school.gender === "Girls"
+          ? "Girls"
+          : school.gender || "n/a";
+
+  const selectiveDisplay =
+    school.selective && school.selective !== "No" && school.selective !== ""
+      ? school.selective
+      : "No";
+
+  const enrolmentDisplay = school.enrolment
+    ? Math.round(school.enrolment)
+    : "n/a";
+
+  const cardStyle = isMobile
+    ? {
+        position: "fixed",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        background: "white",
+        zIndex: 4800,
+        borderRadius: "16px 16px 0 0",
+        boxShadow: "0 -4px 24px rgba(0,0,0,0.18)",
+        padding: "0 0 24px 0",
+        animation: "slideUp 0.25s ease-out",
+        maxHeight: "70vh",
+        overflowY: "auto",
+      }
+    : {
+        position: "absolute",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: "300px",
+        background: "white",
+        zIndex: 2500,
+        boxShadow: "-4px 0 20px rgba(0,0,0,0.12)",
+        overflowY: "auto",
+        animation: "slideInRight 0.25s ease-out",
+      };
+
+  const infoRowStyle = {
+    display: "flex",
+    flexDirection: "column",
+    padding: "8px 18px",
+    borderBottom: "1px solid #f3f3f3",
+  };
+
+  const labelStyle = {
+    fontSize: "11px",
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    color: "#888",
+    marginBottom: 3,
+  };
+
+  const valueStyle = {
+    fontSize: "13px",
+    color: "#222",
+    fontWeight: 500,
+  };
+
+  return (
+    <>
+      {isMobile && <div style={styles.backdrop} onClick={onClose} />}
+      <div style={cardStyle}>
+        {isMobile && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              padding: "10px 0 4px",
+            }}
+          >
+            <div
+              style={{
+                width: 36,
+                height: 4,
+                background: "#ddd",
+                borderRadius: 2,
+              }}
+            />
+          </div>
+        )}
+
+        {/* Header */}
+        <div
+          style={{
+            borderTop: `4px solid ${typeColor}`,
+            padding: "14px 18px 12px",
+            borderBottom: "1px solid #f0f0f0",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <a
+              href={
+                school.url
+                  ? school.url.includes("http")
+                    ? school.url
+                    : `https://${school.url}`
+                  : "#"
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: "#002b5c",
+                fontSize: "15px",
+                fontWeight: 700,
+                textDecoration: "none",
+                lineHeight: 1.3,
+                display: "block",
+              }}
+            >
+              {school.name} ↗
+            </a>
+            <div style={{ fontSize: "12px", color: "#888", marginTop: 3 }}>
+              {school.suburb}
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            style={{
+              border: "none",
+              background: "none",
+              fontSize: "18px",
+              cursor: "pointer",
+              color: "#bbb",
+              flexShrink: 0,
+              padding: 0,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Modern info list */}
+        <div style={{ paddingTop: 6 }}>
+          <div style={infoRowStyle}>
+            <span style={labelStyle}>School type</span>
+            <span style={valueStyle}>
+              <span
+                style={{
+                  display: "inline-block",
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: typeColor,
+                  marginRight: 6,
+                }}
+              />
+              {school.level || "n/a"}
+            </span>
+          </div>
+
+          <div style={infoRowStyle}>
+            <span style={labelStyle}>OC classes</span>
+            <span style={valueStyle}>{ocDisplay}</span>
+          </div>
+
+          <div style={infoRowStyle}>
+            <span style={labelStyle}>Gender</span>
+            <span style={valueStyle}>{genderDisplay}</span>
+          </div>
+
+          <div style={infoRowStyle}>
+            <span style={labelStyle}>Selective</span>
+            <span style={valueStyle}>
+              {selectiveInfo.label || selectiveDisplay}
+            </span>
+          </div>
+
+          <div style={infoRowStyle}>
+            <span style={labelStyle}>Enrolment</span>
+            <span style={valueStyle}>{enrolmentDisplay}</span>
+          </div>
+
+          <div style={infoRowStyle}>
+            <span style={labelStyle}>Academic results & programs</span>
+            <span style={valueStyle}>
+              <a
+                href={mySchoolUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "#1E88E5", textDecoration: "none" }}
+              >
+                MySchool ↗
+              </a>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "11px",
+                  color: "#666",
+                  marginTop: 2,
+                }}
+              >
+                NAPLAN, ATAR insights & school profile
+              </span>
+            </span>
+          </div>
+
+          <div style={infoRowStyle}>
+            <span style={labelStyle}>HSC rankings</span>
+            <span style={valueStyle}>
+              <a
+                href={betterEducationUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "#1E88E5", textDecoration: "none" }}
+              >
+                Better Education ↗
+              </a>
+            </span>
+          </div>
+
+          <div style={infoRowStyle}>
+            <span style={labelStyle}>
+              Verify data on the official School Finder website
+            </span>
+            <span style={valueStyle}>
+              <a
+                href={schoolFinderUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "#1E88E5", textDecoration: "none" }}
+              >
+                School Finder ↗
+              </a>
+            </span>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────
+   MAIN MAP VIEW (logic)
+   ──────────────────────────────────────────────────────────────── */
+function MapViewInner() {
   const [schools, setSchools] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeCatchment, setActiveCatchment] = useState(null);
+  const [futureCatchments, setFutureCatchments] = useState(null);
   const [mapTarget, setMapTarget] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectedSchool, setSelectedSchool] = useState(null);
+  const [searchForcedSchool, setSearchForcedSchool] = useState(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" ? window.innerWidth < 768 : false,
   );
-  const [showResults, setShowResults] = useState(false);
 
   const [typeFilters, setTypeFilters] = useState(Object.keys(SCHOOL_COLORS));
   const [genderFilter, setGenderFilter] = useState("All");
   const [ocFilter, setOcFilter] = useState(false);
+  const [selectiveFilter, setSelectiveFilter] = useState("all");
+  const [showFuture, setShowFuture] = useState(false);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -88,60 +1067,99 @@ function MapView() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const fetchBoundary = async (code) => {
-    // Load and cache the GeoJSON on first call
+  useEffect(() => {
+    if (!showFuture || futureCatchments) return;
+    async function loadFuture() {
+      try {
+        if (!window._catchmentCache) {
+          const res = await fetch("/catchments.geojson");
+          window._catchmentCache = await res.json();
+        }
+        const futureFeatures = window._catchmentCache.features.filter(
+          (f) =>
+            f.properties.CATCH_TYPE &&
+            f.properties.CATCH_TYPE.toLowerCase().includes("future"),
+        );
+        if (futureFeatures.length > 0) {
+          setFutureCatchments({
+            type: "FeatureCollection",
+            features: futureFeatures,
+          });
+        }
+      } catch (e) {
+        console.error("Future zones error", e);
+      }
+    }
+    loadFuture();
+  }, [showFuture, futureCatchments]);
+
+  const fetchBoundary = useCallback(async (code) => {
     if (!window._catchmentCache) {
       const res = await fetch("/catchments.geojson");
       window._catchmentCache = await res.json();
     }
-
     const paddedCode = String(parseInt(code, 10)).padStart(4, "0");
-
     const feature = window._catchmentCache.features.find(
       (f) => String(f.properties.USE_ID).padStart(4, "0") === paddedCode,
     );
-
     if (feature) {
       setActiveCatchment({ type: "FeatureCollection", features: [feature] });
     } else {
       setActiveCatchment(null);
-      console.log("No catchment found for code:", paddedCode);
     }
-  };
+  }, []);
 
-  // 3. SEARCH SUGGESTIONS LOGIC
+  const handleSchoolClick = useCallback(
+    (school) => {
+      setSelectedSchool(school);
+      setSearchForcedSchool(null);
+      fetchBoundary(school.code);
+    },
+    [fetchBoundary],
+  );
+
   const searchResults = useMemo(() => {
     if (searchTerm.length < 2) return [];
-
     const lowerTerm = searchTerm.toLowerCase();
-
-    // Get unique suburbs that match
     const suburbs = [...new Set(schools.map((s) => s.suburb))]
       .filter((sub) => sub.toLowerCase().includes(lowerTerm))
       .map((sub) => ({ type: "suburb", name: sub, label: `🏠 ${sub}` }));
-
-    // Get schools that match
     const schoolMatches = schools
       .filter((s) => s.name.toLowerCase().includes(lowerTerm))
       .map((s) => ({ ...s, type: "school", label: `🎓 ${s.name}` }));
-
     return [...suburbs, ...schoolMatches].slice(0, 10);
   }, [searchTerm, schools]);
 
   const handleSelect = (item) => {
     setSearchTerm(item.name);
     setShowResults(false);
-
     if (item.type === "school") {
-      // Zoom to school and fetch its boundary
       setMapTarget([item.lat, item.lng]);
+      setSelectedSchool(item);
       fetchBoundary(item.code);
+
+      const typeLabel =
+        Object.keys(SCHOOL_COLORS).find((k) => item.level?.includes(k)) ||
+        "Other";
+      const hiddenByType = !typeFilters.includes(typeLabel);
+      const hiddenByGender =
+        genderFilter !== "All" && item.gender !== genderFilter;
+      const hiddenByOC = ocFilter && (!item.oc || item.oc === "N");
+      const hiddenBySelective =
+        selectiveFilter !== "all" &&
+        !(
+          selectiveFilter === "non" &&
+          (!item.selective || item.selective === "No" || item.selective === "")
+        ) &&
+        item.selective !== selectiveFilter;
+
+      const wouldBeHidden =
+        hiddenByType || hiddenByGender || hiddenByOC || hiddenBySelective;
+      setSearchForcedSchool(wouldBeHidden ? item : null);
     } else {
-      // If a suburb was selected, find the first school in that suburb to center the map
-      const firstInSuburb = schools.find((s) => s.suburb === item.name);
-      if (firstInSuburb) {
-        setMapTarget([firstInSuburb.lat, firstInSuburb.lng]);
-      }
+      setSearchForcedSchool(null);
+      const first = schools.find((s) => s.suburb === item.name);
+      if (first) setMapTarget([first.lat, first.lng]);
     }
   };
 
@@ -149,390 +1167,416 @@ function MapView() {
     return schools.filter((s) => {
       const typeLabel =
         Object.keys(SCHOOL_COLORS).find((k) => s.level.includes(k)) || "Other";
+
       const matchesType = typeFilters.includes(typeLabel);
       const matchesGender = genderFilter === "All" || s.gender === genderFilter;
       const matchesOC = !ocFilter || (s.oc && s.oc !== "N");
-      return matchesType && matchesGender && matchesOC;
+
+      // --- FIXED SELECTIVE LOGIC ---
+      const sel = (s.selective || "").trim().toLowerCase();
+
+      const matchesSelective =
+        selectiveFilter === "all" ||
+        // Fully selective
+        (selectiveFilter === "Fully selective" && sel === "fully selective") ||
+        // Partially selective
+        (selectiveFilter === "Partially selective" &&
+          sel === "partially selective") ||
+        // Non-selective (covers ALL NSW variations)
+        (selectiveFilter === "non" &&
+          (sel === "no" ||
+            sel === "n" ||
+            sel === "" ||
+            sel === "non-selective" ||
+            sel === "not selective" ||
+            sel === "n/a" ||
+            sel === "none"));
+
+      return matchesType && matchesGender && matchesOC && matchesSelective;
     });
-  }, [schools, typeFilters, genderFilter, ocFilter]);
+  }, [schools, typeFilters, genderFilter, ocFilter, selectiveFilter]);
+
+  const schoolsToRender = useMemo(() => {
+    if (
+      !searchForcedSchool ||
+      filteredSchools.some((s) => s.code === searchForcedSchool.code)
+    ) {
+      return filteredSchools;
+    }
+    return [...filteredSchools, searchForcedSchool];
+  }, [filteredSchools, searchForcedSchool]);
+
+  const handleClearAll = () => {
+    setActiveCatchment(null);
+    setSelectedSchool(null);
+    setSearchForcedSchool(null);
+    setSearchTerm("");
+  };
+
+  const handleClearFilters = () => {
+    setTypeFilters(Object.keys(SCHOOL_COLORS));
+    setGenderFilter("All");
+    setOcFilter(false);
+    setSelectiveFilter("all");
+    setSearchForcedSchool(null);
+  };
 
   if (loading)
-    return <div style={{ padding: "20px" }}>Loading Map Data...</div>;
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100vh",
-        width: "100vw",
-        overflow: "hidden",
-      }}
-    >
-      <header
+    return (
+      <div
         style={{
-          backgroundColor: "#002b5c",
-          color: "white",
-          padding: "12px 10px",
-          zIndex: 3000,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100vh",
+          flexDirection: "column",
+          gap: 12,
+          color: "#002b5c",
         }}
       >
-        <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 32 }}>🗺️</div>
+        <div style={{ fontSize: 16, fontWeight: 600 }}>
+          Loading School Map...
+        </div>
+      </div>
+    );
+
+  return (
+    <>
+      <style>{`
+        @keyframes slideUp {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+        @keyframes slideInRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+        .search-item:hover { background: #f5f7ff !important; }
+        .school-hover-tooltip {
+          background: rgba(0, 0, 0, 0.78) !important;
+          color: white !important;
+          border: none !important;
+          border-radius: 7px !important;
+          font-size: 12px !important;
+          font-weight: 600 !important;
+          padding: 4px 9px !important;
+          white-space: nowrap !important;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.25) !important;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+        }
+        .school-hover-tooltip::before {
+          border-top-color: rgba(0, 0, 0, 0.78) !important;
+        }
+      `}</style>
+
+      <div style={styles.appShell}>
+        {/* HEADER */}
+        <header style={styles.header}>
+          <div style={{ textAlign: "center", flex: 1 }}>
+            <h1
+              style={{
+                ...styles.headerTitle,
+                fontSize: isMobile ? "16px" : "20px",
+              }}
+            >
+              📍 Local School Map
+            </h1>
+            <p style={styles.headerSub}>
+              NSW Public School Boundaries (Unofficial)
+            </p>
+          </div>
+          {isMobile && (
+            <button
+              style={styles.filterToggleBtn}
+              onClick={() => setFilterOpen((v) => !v)}
+              title="Open filters"
+            >
+              ☰
+            </button>
+          )}
+        </header>
+
+        {/* MAP AREA */}
+        <div style={styles.mapArea}>
+          {/* Search bar */}
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "8px",
+              ...styles.searchWrap,
+              maxWidth: !isMobile && selectedSchool ? "380px" : "420px",
+              left: !isMobile && selectedSchool ? "calc(50% - 150px)" : "50%",
             }}
           >
-            <span>📍</span>
-            <h1 style={{ margin: 0, fontSize: isMobile ? "18px" : "22px" }}>
-              Local School Map
-            </h1>
-          </div>
-          <p style={{ margin: "2px 0 0", fontSize: "11px", opacity: 0.8 }}>
-            NSW Public School intake boundary tool (Unofficial)
-          </p>
-        </div>
-      </header>
-
-      <div style={{ flex: 1, position: "relative" }}>
-        {/* CUSTOM SEARCH BAR */}
-        <div
-          style={{
-            position: "absolute",
-            top: 15,
-            left: "5%",
-            width: "90%",
-            maxWidth: "400px",
-            zIndex: 4000,
-          }}
-        >
-          <div style={{ position: "relative" }}>
-            <input
-              type="text"
-              placeholder="Search schools or suburbs..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setShowResults(true);
-              }}
-              style={{
-                width: "100%",
-                padding: "12px",
-                borderRadius: "8px",
-                border: "1px solid #ccc",
-                boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-                fontSize: "14px",
-              }}
-            />
-            {searchTerm && (
-              <button
-                onClick={() => {
-                  setSearchTerm("");
-                  setActiveCatchment(null);
+            <div style={styles.searchInner}>
+              <input
+                type="text"
+                placeholder="Search schools or suburbs..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setShowResults(true);
                 }}
-                style={{
-                  position: "absolute",
-                  right: 10,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  border: "none",
-                  background: "none",
-                  fontSize: "18px",
-                  cursor: "pointer",
-                  color: "#999",
-                }}
-              >
-                ✕
-              </button>
+                onFocus={() => searchTerm.length >= 2 && setShowResults(true)}
+                style={styles.searchInput}
+              />
+              {searchTerm && (
+                <button onClick={handleClearAll} style={styles.searchClear}>
+                  ✕
+                </button>
+              )}
+            </div>
+            {showResults && searchResults.length > 0 && (
+              <ul style={styles.searchDropdown}>
+                {searchResults.map((item, i) => (
+                  <li
+                    key={i}
+                    className="search-item"
+                    onClick={() => handleSelect(item)}
+                    style={styles.searchItem}
+                  >
+                    {item.label}
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
 
-          {showResults && searchResults.length > 0 && (
-            <ul
-              style={{
-                background: "white",
-                listStyle: "none",
-                margin: "4px 0 0",
-                padding: "0",
-                borderRadius: "8px",
-                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                maxHeight: "300px",
-                overflowY: "auto",
-                border: "1px solid #eee",
-              }}
-            >
-              {searchResults.map((item, i) => (
-                <li
-                  key={i}
-                  onClick={() => handleSelect(item)}
-                  style={{
-                    padding: "12px",
-                    borderBottom: "1px solid #f0f0f0",
-                    cursor: "pointer",
-                    fontSize: "13px",
-                    hover: { background: "#f9f9f9" },
-                  }}
-                  onMouseEnter={(e) => (e.target.style.background = "#f9f9f9")}
-                  onMouseLeave={(e) => (e.target.style.background = "white")}
-                >
-                  {item.label}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {activeCatchment && (
-          <button
-            onClick={() => setActiveCatchment(null)}
-            style={{
-              position: "absolute",
-              top: 80,
-              left: "50%",
-              transform: "translateX(-50%)",
-              zIndex: 2000,
-              background: "#ff4444",
-              color: "white",
-              border: "none",
-              padding: "8px 15px",
-              borderRadius: "20px",
-              fontSize: "12px",
-              cursor: "pointer",
-            }}
-          >
-            ✕ Clear Boundary
-          </button>
-        )}
-
-        <MapContainer
-          center={[-33.86, 151.2]}
-          zoom={11}
-          style={{ height: "100%", width: "100%" }}
-          zoomControl={false}
-        >
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution="&copy; OpenStreetMap"
-          />
-          <ZoomControl position="bottomright" />
-          <ZoomHandler target={mapTarget} />
-
-          {activeCatchment && (
-            <GeoJSON
-              key={JSON.stringify(activeCatchment)}
-              data={activeCatchment}
-              style={{ color: "#ff4444", weight: 3, fillOpacity: 0.2 }}
-              onEachFeature={(feature, layer) => {
-                // This helps center the map on the catchment
-                if (feature.geometry) {
-                  // map.fitBounds(layer.getBounds()); // Optional: Auto-zoom to boundary
-                }
-              }}
-            />
-          )}
-
-          {filteredSchools.map((school) => (
-            <CircleMarker
-              key={school.code}
-              center={[school.lat, school.lng]}
-              radius={8}
-              pathOptions={{
-                fillColor:
-                  SCHOOL_COLORS[
-                    Object.keys(SCHOOL_COLORS).find((k) =>
-                      school.level.includes(k),
-                    ) || "Other"
-                  ] || "#888",
-                color: "white",
-                weight: 1,
-                fillOpacity: 0.8,
-              }}
-              eventHandlers={{ click: () => fetchBoundary(school.code) }}
-            >
-              <Popup>
-                <div style={{ minWidth: "180px", padding: "2px" }}>
-                  <div
-                    onClick={() =>
-                      school.url &&
-                      window.open(
-                        school.url.includes("http")
-                          ? school.url
-                          : `https://${school.url}`,
-                        "_blank",
-                      )
-                    }
-                    style={{
-                      color: "#1E88E5",
-                      fontSize: "15px",
-                      fontWeight: "bold",
-                      textDecoration: "underline",
-                      cursor: "pointer",
-                      marginBottom: "8px",
-                    }}
-                  >
-                    {school.name}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      lineHeight: "1.6",
-                      color: "#333",
-                      marginBottom: "10px",
-                    }}
-                  >
-                    <strong>Type:</strong> {school.level}
-                    <br />
-                    <strong>Gender:</strong> {school.gender}
-                    <br />
-                    <strong>Selective:</strong> {school.selective}
-                    <br />
-                    <strong>Enrolment:</strong> {Math.round(school.enrolment)}
-                    <br />
-                    {school.oc !== "N" && (
-                      <span style={{ color: "#2e7d32", fontWeight: "bold" }}>
-                        ★ OC Classes Available
-                      </span>
-                    )}
-                  </div>
-                  <div
-                    onClick={() =>
-                      window.open(
-                        `https://schoolfinder.education.nsw.gov.au/index.php?schoolCode=${school.code}`,
-                        "_blank",
-                      )
-                    }
-                    style={{
-                      textAlign: "center",
-                      fontSize: "10px",
-                      color: "#666",
-                      padding: "4px",
-                      background: "#f5f5f5",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                      border: "1px solid #ddd",
-                    }}
-                  >
-                    Verify on Official School Finder ↗
-                  </div>
-                </div>
-              </Popup>
-            </CircleMarker>
-          ))}
-        </MapContainer>
-
-        <div
-          style={{
-            position: "absolute",
-            bottom: isMobile ? 10 : 30,
-            left: 10,
-            zIndex: 2000,
-            background: "white",
-            padding: "12px",
-            borderRadius: "12px",
-            boxShadow: "0 2px 15px rgba(0,0,0,0.2)",
-            width: isMobile ? "140px" : "180px",
-            fontSize: "11px",
-          }}
-        >
-          <div
-            style={{
-              fontWeight: "bold",
-              marginBottom: "8px",
-              borderBottom: "1px solid #eee",
-              paddingBottom: "4px",
-            }}
-          >
-            Filter Schools
-          </div>
-          <select
-            onChange={(e) => setGenderFilter(e.target.value)}
-            style={{ width: "100%", marginBottom: "10px", padding: "4px" }}
-          >
-            <option value="All">All Genders</option>
-            <option value="Coed">Co-educational</option>
-            <option value="Boys">Boys Only</option>
-            <option value="Girls">Girls Only</option>
-          </select>
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              marginBottom: "10px",
-              cursor: "pointer",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={ocFilter}
-              onChange={(e) => setOcFilter(e.target.checked)}
-              style={{ marginRight: "8px" }}
-            />
-            Opportunity Classes
-          </label>
-          {Object.entries(SCHOOL_COLORS).map(([label, color]) => (
+          {/* Filter warning / clear pill */}
+          {searchForcedSchool ? (
             <div
-              key={label}
-              onClick={() =>
-                setTypeFilters((p) =>
-                  p.includes(label)
-                    ? p.filter((l) => l !== label)
-                    : [...p, label],
-                )
-              }
               style={{
-                display: "flex",
-                alignItems: "center",
-                marginBottom: "5px",
-                cursor: "pointer",
-                opacity: typeFilters.includes(label) ? 1 : 0.3,
+                position: "absolute",
+                top: 68,
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 2000,
+                background: "#fff8e1",
+                border: "1px solid #f59e0b",
+                color: "#7a4500",
+                padding: "6px 14px",
+                borderRadius: "20px",
+                fontSize: "11px",
+                fontWeight: 500,
+                whiteSpace: "nowrap",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
               }}
             >
-              <div
+              ⚠️ This school is hidden by your current filters
+            </div>
+          ) : (
+            activeCatchment && (
+              <button style={styles.clearPill} onClick={handleClearAll}>
+                ✕ Clear
+              </button>
+            )
+          )}
+
+          {/* MAP */}
+          <MapContainer
+            center={[-33.86, 151.2]}
+            zoom={11}
+            style={{ height: "100%", width: "100%" }}
+            zoomControl={false}
+            onClick={() => setShowResults(false)}
+          >
+            <TileLayer
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution="&copy; OpenStreetMap contributors"
+            />
+            <ZoomControl position="bottomright" />
+            <ZoomHandler target={mapTarget} />
+
+            {activeCatchment && (
+              <GeoJSON
+                key={`active-${activeCatchment?.features?.[0]?.properties?.USE_ID}-${selectedSchool?.code || "none"}`}
+                data={activeCatchment}
                 style={{
-                  width: "10px",
-                  height: "10px",
-                  background: color,
-                  borderRadius: "50%",
-                  marginRight: "8px",
+                  color: "#1E88E5",
+                  weight: 3,
+                  fillOpacity: 0.15,
+                  fillColor: "#1E88E5",
+                }}
+                onEachFeature={(feature, layer) => {
+                  if (!layer) return;
+                  layer.on({
+                    mouseover: () => {
+                      if (!layer || !layer._map || !layer._path) return;
+                      try {
+                        layer.setStyle({ weight: 4 });
+                      } catch {}
+                    },
+                    mouseout: () => {
+                      if (!layer || !layer._map || !layer._path) return;
+                      try {
+                        layer.setStyle({ weight: 3 });
+                      } catch {}
+                    },
+                  });
                 }}
               />
-              <span>{label}</span>
-            </div>
-          ))}
+            )}
+
+            {showFuture && futureCatchments && (
+              <GeoJSON
+                key={`future-layer-${futureCatchments.features.length}-${showFuture}`}
+                data={futureCatchments}
+                style={{
+                  color: "#FF8C00",
+                  weight: 2.5,
+                  dashArray: "8 5",
+                  fillOpacity: 0.08,
+                  fillColor: "#FF8C00",
+                }}
+                onEachFeature={(feature, layer) => {
+                  if (!layer) return;
+                  const schoolName =
+                    feature.properties?.USE_DESC || "Future Zone";
+                  try {
+                    layer.bindTooltip(`🔮 Future: ${schoolName}`, {
+                      permanent: false,
+                      sticky: true,
+                      className: "future-tooltip",
+                    });
+                  } catch {}
+
+                  layer.on({
+                    mouseover: () => {
+                      if (!layer || !layer._map || !layer._path) return;
+                      try {
+                        layer.setStyle({ weight: 3.5, color: "#cc6600" });
+                      } catch {}
+                    },
+                    mouseout: () => {
+                      if (!layer || !layer._map || !layer._path) return;
+                      try {
+                        layer.setStyle({ weight: 2.5, color: "#FF8C00" });
+                      } catch {}
+                    },
+                    click: () => {
+                      const map = layer._map;
+                      if (!map || !layer.getBounds) return;
+                      try {
+                        map.fitBounds(layer.getBounds(), {
+                          padding: [40, 40],
+                        });
+                      } catch {}
+                    },
+                  });
+                }}
+              />
+            )}
+
+            {schoolsToRender.map((school) => {
+              const typeKey =
+                Object.keys(SCHOOL_COLORS).find((k) =>
+                  school.level.includes(k),
+                ) || "Other";
+              const isSelected = selectedSchool?.code === school.code;
+              const isForced = searchForcedSchool?.code === school.code;
+              const shortName = school.name
+                .replace("Public School", "PS")
+                .replace("High School", "HS")
+                .replace("Primary School", "PS")
+                .replace("Central School", "CS")
+                .replace("Secondary College", "SC")
+                .replace("School", "Sch");
+              return (
+                <CircleMarker
+                  key={school.code}
+                  center={[school.lat, school.lng]}
+                  radius={isSelected ? 11 : 8}
+                  pathOptions={{
+                    fillColor: SCHOOL_COLORS[typeKey] || "#888",
+                    color: isSelected
+                      ? "#002b5c"
+                      : isForced
+                        ? "#f59e0b"
+                        : "white",
+                    weight: isSelected ? 2.5 : isForced ? 2 : 1,
+                    fillOpacity:
+                      isForced && !isSelected ? 0.5 : isSelected ? 1 : 0.8,
+                    dashArray: isForced && !isSelected ? "4 3" : undefined,
+                  }}
+                  eventHandlers={{
+                    click: () => {
+                      handleSchoolClick(school);
+                      setShowResults(false);
+                    },
+                    mouseover: (e) => {
+                      const layer = e?.target;
+                      if (!layer || !layer._map || !layer._path) return;
+                      try {
+                        layer
+                          .bindTooltip(shortName, {
+                            permanent: false,
+                            direction: "top",
+                            offset: [0, -6],
+                            className: "school-hover-tooltip",
+                          })
+                          .openTooltip();
+                      } catch {}
+                    },
+                    mouseout: (e) => {
+                      const layer = e?.target;
+                      if (!layer || !layer._map) return;
+                      try {
+                        layer.unbindTooltip();
+                      } catch {}
+                    },
+                  }}
+                />
+              );
+            })}
+          </MapContainer>
+
+          <SchoolInfoCard
+            school={selectedSchool}
+            isMobile={isMobile}
+            onClose={() => setSelectedSchool(null)}
+          />
         </div>
+
+        {/* FOOTER */}
+        <footer style={styles.footer}>
+          <strong>Disclaimer:</strong> Unofficial tool. Not affiliated with NSW
+          Dept of Education.{" "}
+          <strong>
+            Verify catchments officially before making enrolment or financial
+            decisions.
+          </strong>{" "}
+          Data: NSW Dept of Education Open Data (April 2026).
+        </footer>
       </div>
 
-      <footer
-        style={{
-          backgroundColor: "#f1f1f1",
-          padding: "6px 10px",
-          textAlign: "center",
-          fontSize: "10px",
-          color: "#555",
-          borderTop: "1px solid #ddd",
-          zIndex: 3000,
-        }}
-      >
-        <p style={{ margin: "0" }}>
-          <strong>Disclaimer:</strong> This is NOT an official government
-          website and is not affiliated with the NSW Dept of Education.
-        </p>
-        <p style={{ margin: "2px 0 0", lineHeight: "1.2" }}>
-          Tool for informational purposes only. Catchments change without
-          notice.{" "}
-          <strong>
-            Verify boundaries officially before making financial or enrollment
-            decisions.
-          </strong>
-          <br />
-          Data Source: NSW Dept of Education Open Data (Last Records: April
-          2026).
-        </p>
-      </footer>
-    </div>
+      {/* Filter panel outside app shell */}
+      <FilterPanel
+        isMobile={isMobile}
+        isOpen={filterOpen}
+        onToggle={() => setFilterOpen((v) => !v)}
+        typeFilters={typeFilters}
+        setTypeFilters={setTypeFilters}
+        genderFilter={genderFilter}
+        setGenderFilter={setGenderFilter}
+        ocFilter={ocFilter}
+        setOcFilter={setOcFilter}
+        selectiveFilter={selectiveFilter}
+        setSelectiveFilter={setSelectiveFilter}
+        showFuture={showFuture}
+        setShowFuture={setShowFuture}
+        onClearFilters={handleClearFilters}
+      />
+    </>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────
+   WRAPPED EXPORT WITH ERROR BOUNDARY
+   ──────────────────────────────────────────────────────────────── */
+function MapView() {
+  return (
+    <MapErrorBoundary>
+      <MapViewInner />
+    </MapErrorBoundary>
   );
 }
 
