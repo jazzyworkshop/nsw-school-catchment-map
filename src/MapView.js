@@ -6,6 +6,7 @@ import {
   GeoJSON,
   useMap,
   ZoomControl,
+  Marker,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -128,7 +129,7 @@ const styles = {
     height: HEADER_HEIGHT,
   },
   headerTitle: { margin: 0 },
-  headerSub: { margin: "2px 0 0", fontSize: "11px", opacity: 0.7 },
+  headerSub: { margin: "1px 2 0", fontSize: "11px", opacity: 0.7 },
   mapArea: { flex: 1, position: "relative", overflow: "hidden" },
   footer: {
     backgroundColor: "#f1f1f1",
@@ -224,6 +225,50 @@ const styles = {
     cursor: "pointer",
     whiteSpace: "nowrap",
   },
+  searchModeToggle: {
+    position: "absolute",
+    top: -26,
+    right: 0,
+    display: "inline-flex",
+    background: "white",
+    borderRadius: 999,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+    overflow: "hidden",
+    border: "1px solid #ddd",
+    fontSize: 11,
+  },
+  searchModeButton: (active) => ({
+    padding: "4px 8px",
+    cursor: "pointer",
+    background: active ? "#002b5c" : "white",
+    color: active ? "white" : "#555",
+    border: "none",
+    outline: "none",
+    fontWeight: active ? 600 : 400,
+  }),
+  addressCatchmentToggle: {
+    position: "absolute",
+    top: 68,
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: 2100,
+    background: "white",
+    borderRadius: 999,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+    border: "1px solid #eee",
+    display: "inline-flex",
+    overflow: "hidden",
+    fontSize: 11,
+  },
+  addressCatchmentButton: (active) => ({
+    padding: "5px 10px",
+    cursor: "pointer",
+    background: active ? "#002b5c" : "white",
+    color: active ? "white" : "#555",
+    border: "none",
+    outline: "none",
+    fontWeight: active ? 600 : 400,
+  }),
 };
 
 /* ────────────────────────────────────────────────────────────────
@@ -1009,11 +1054,77 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
 }
 
 /* ────────────────────────────────────────────────────────────────
+   HELPERS: CATCHMENT + POINT-IN-POLYGON
+   ──────────────────────────────────────────────────────────────── */
+
+// Basic ray-casting point-in-polygon for [lng, lat] arrays
+function pointInRing(point, ring) {
+  const [x, y] = point;
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    const intersect =
+      yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi + 0.0) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function pointInPolygon(point, polygonCoords) {
+  // polygonCoords: [ [ [lng,lat], ... ] , ... ] (outer + holes)
+  if (!Array.isArray(polygonCoords) || polygonCoords.length === 0) return false;
+  const outerRing = polygonCoords[0];
+  if (!pointInRing(point, outerRing)) return false;
+  // ignore holes for now (good enough for school zones)
+  return true;
+}
+
+function pointInFeature(lat, lng, feature) {
+  if (!feature || !feature.geometry) return false;
+  const { type, coordinates } = feature.geometry;
+  const pt = [lng, lat];
+
+  if (type === "Polygon") {
+    return pointInPolygon(pt, coordinates);
+  }
+  if (type === "MultiPolygon") {
+    return coordinates.some((poly) => pointInPolygon(pt, poly));
+  }
+  return false;
+}
+
+function isPrimaryCatchment(feature) {
+  const props = feature.properties || {};
+  const ct = (props.CATCH_TYPE || "").toLowerCase();
+  const desc = (props.USE_DESC || "").toLowerCase();
+
+  if (ct.includes("primary")) return true;
+  if (desc.includes("public school") && !desc.includes("high school"))
+    return true;
+  if (desc.includes("primary school")) return true;
+  return false;
+}
+
+function isSecondaryCatchment(feature) {
+  const props = feature.properties || {};
+  const ct = (props.CATCH_TYPE || "").toLowerCase();
+  const desc = (props.USE_DESC || "").toLowerCase();
+
+  if (ct.includes("secondary")) return true;
+  if (desc.includes("high school")) return true;
+  if (desc.includes("secondary college")) return true;
+  return false;
+}
+
+/* ────────────────────────────────────────────────────────────────
    MAIN MAP VIEW (logic)
    ──────────────────────────────────────────────────────────────── */
 function MapViewInner() {
   const [schools, setSchools] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchMode, setSearchMode] = useState("school"); // "school" | "address"
+
   const [activeCatchment, setActiveCatchment] = useState(null);
   const [futureCatchments, setFutureCatchments] = useState(null);
   const [mapTarget, setMapTarget] = useState(null);
@@ -1032,6 +1143,16 @@ function MapViewInner() {
   const [ocFilter, setOcFilter] = useState(false);
   const [selectiveFilter, setSelectiveFilter] = useState("all");
   const [showFuture, setShowFuture] = useState(false);
+
+  // Residential search state
+  const [addressResults, setAddressResults] = useState([]);
+  const [addressLoading, setAddressLoading] = useState(false);
+  const [addressMarker, setAddressMarker] = useState(null);
+  const [primaryCatchmentFeature, setPrimaryCatchmentFeature] = useState(null);
+  const [secondaryCatchmentFeature, setSecondaryCatchmentFeature] =
+    useState(null);
+  const [secondarySchool, setSecondarySchool] = useState(null);
+  const [catchmentView, setCatchmentView] = useState("primary"); // "primary" | "secondary"
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -1093,32 +1214,45 @@ function MapViewInner() {
     loadFuture();
   }, [showFuture, futureCatchments]);
 
-  const fetchBoundary = useCallback(async (code) => {
+  const ensureCatchmentCache = useCallback(async () => {
     if (!window._catchmentCache) {
       const res = await fetch("/catchments.geojson");
       window._catchmentCache = await res.json();
     }
-    const paddedCode = String(parseInt(code, 10)).padStart(4, "0");
-    const feature = window._catchmentCache.features.find(
-      (f) => String(f.properties.USE_ID).padStart(4, "0") === paddedCode,
-    );
-    if (feature) {
-      setActiveCatchment({ type: "FeatureCollection", features: [feature] });
-    } else {
-      setActiveCatchment(null);
-    }
+    return window._catchmentCache;
   }, []);
+
+  const fetchBoundary = useCallback(
+    async (code) => {
+      const cache = await ensureCatchmentCache();
+      const paddedCode = String(parseInt(code, 10)).padStart(4, "0");
+      const feature = cache.features.find(
+        (f) => String(f.properties.USE_ID).padStart(4, "0") === paddedCode,
+      );
+      if (feature) {
+        setActiveCatchment({ type: "FeatureCollection", features: [feature] });
+      } else {
+        setActiveCatchment(null);
+      }
+    },
+    [ensureCatchmentCache],
+  );
 
   const handleSchoolClick = useCallback(
     (school) => {
       setSelectedSchool(school);
       setSearchForcedSchool(null);
+      setAddressMarker(null);
+      setPrimaryCatchmentFeature(null);
+      setSecondaryCatchmentFeature(null);
+      setSecondarySchool(null);
       fetchBoundary(school.code);
     },
     [fetchBoundary],
   );
 
   const searchResults = useMemo(() => {
+    if (searchMode !== "school") return [];
     if (searchTerm.length < 2) return [];
     const lowerTerm = searchTerm.toLowerCase();
     const suburbs = [...new Set(schools.map((s) => s.suburb))]
@@ -1128,11 +1262,75 @@ function MapViewInner() {
       .filter((s) => s.name.toLowerCase().includes(lowerTerm))
       .map((s) => ({ ...s, type: "school", label: `🎓 ${s.name}` }));
     return [...suburbs, ...schoolMatches].slice(0, 10);
-  }, [searchTerm, schools]);
+  }, [searchTerm, schools, searchMode]);
+
+  // Residential address search via Nominatim
+  useEffect(() => {
+    if (searchMode !== "address") {
+      setAddressResults([]);
+      setAddressLoading(false);
+      return;
+    }
+    if (searchTerm.trim().length < 3) {
+      setAddressResults([]);
+      setAddressLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    async function runSearch() {
+      try {
+        setAddressLoading(true);
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          searchTerm.trim(),
+        )}&addressdetails=1&limit=8&countrycodes=au`;
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            // Nominatim recommends identifying the application; browser may ignore this but it's fine.
+            "Accept-Language": "en",
+          },
+        });
+        if (!res.ok) throw new Error("Nominatim error");
+        const data = await res.json();
+        if (cancelled) return;
+        const mapped = data.map((item) => ({
+          type: "address",
+          label: `📍 ${item.display_name}`,
+          name: item.display_name,
+          lat: parseFloat(item.lat),
+          lng: parseFloat(item.lon),
+        }));
+        setAddressResults(mapped);
+      } catch (e) {
+        if (!cancelled) {
+          console.error("Address search error", e);
+          setAddressResults([]);
+        }
+      } finally {
+        if (!cancelled) setAddressLoading(false);
+      }
+    }
+
+    const t = setTimeout(runSearch, 350); // simple debounce
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearTimeout(t);
+    };
+  }, [searchTerm, searchMode]);
 
   const handleSelect = (item) => {
+    if (searchMode === "address") return; // handled separately
     setSearchTerm(item.name);
     setShowResults(false);
+    setAddressMarker(null);
+    setPrimaryCatchmentFeature(null);
+    setSecondaryCatchmentFeature(null);
+    setSecondarySchool(null);
+
     if (item.type === "school") {
       setMapTarget([item.lat, item.lng]);
       setSelectedSchool(item);
@@ -1163,6 +1361,90 @@ function MapViewInner() {
     }
   };
 
+  const handleAddressSelect = async (item) => {
+    setSearchTerm(item.name);
+    setShowResults(false);
+    setSearchForcedSchool(null);
+    setSelectedSchool(null);
+    setMapTarget([item.lat, item.lng]);
+    setAddressMarker({ lat: item.lat, lng: item.lng });
+    setCatchmentView("primary");
+
+    try {
+      const cache = await ensureCatchmentCache();
+      const features = cache.features || [];
+
+      let primaryFeature = null;
+      let secondaryFeature = null;
+
+      for (const f of features) {
+        if (!f.geometry) continue;
+        if (!primaryFeature && isPrimaryCatchment(f)) {
+          if (pointInFeature(item.lat, item.lng, f)) {
+            primaryFeature = f;
+          }
+        }
+        if (!secondaryFeature && isSecondaryCatchment(f)) {
+          if (pointInFeature(item.lat, item.lng, f)) {
+            secondaryFeature = f;
+          }
+        }
+        if (primaryFeature && secondaryFeature) break;
+      }
+
+      setPrimaryCatchmentFeature(primaryFeature || null);
+      setSecondaryCatchmentFeature(secondaryFeature || null);
+
+      if (primaryFeature) {
+        const codeRaw = primaryFeature.properties?.USE_ID;
+        const paddedCode = String(parseInt(codeRaw, 10)).padStart(4, "0");
+        const primarySchool =
+          schools.find(
+            (s) => String(parseInt(s.code, 10)).padStart(4, "0") === paddedCode,
+          ) || null;
+
+        setActiveCatchment({
+          type: "FeatureCollection",
+          features: [primaryFeature],
+        });
+        if (primarySchool) {
+          setSelectedSchool(primarySchool);
+        }
+      } else if (secondaryFeature) {
+        // Fallback: if no primary but secondary exists
+        const codeRaw = secondaryFeature.properties?.USE_ID;
+        const paddedCode = String(parseInt(codeRaw, 10)).padStart(4, "0");
+        const secSchool =
+          schools.find(
+            (s) => String(parseInt(s.code, 10)).padStart(4, "0") === paddedCode,
+          ) || null;
+
+        setActiveCatchment({
+          type: "FeatureCollection",
+          features: [secondaryFeature],
+        });
+        if (secSchool) {
+          setSelectedSchool(secSchool);
+        }
+        setCatchmentView("secondary");
+      }
+
+      if (secondaryFeature) {
+        const codeRaw = secondaryFeature.properties?.USE_ID;
+        const paddedCode = String(parseInt(codeRaw, 10)).padStart(4, "0");
+        const secSchool =
+          schools.find(
+            (s) => String(parseInt(s.code, 10)).padStart(4, "0") === paddedCode,
+          ) || null;
+        setSecondarySchool(secSchool || null);
+      } else {
+        setSecondarySchool(null);
+      }
+    } catch (e) {
+      console.error("Address catchment detection error", e);
+    }
+  };
+
   const filteredSchools = useMemo(() => {
     return schools.filter((s) => {
       const typeLabel =
@@ -1172,17 +1454,13 @@ function MapViewInner() {
       const matchesGender = genderFilter === "All" || s.gender === genderFilter;
       const matchesOC = !ocFilter || (s.oc && s.oc !== "N");
 
-      // --- FIXED SELECTIVE LOGIC ---
       const sel = (s.selective || "").trim().toLowerCase();
 
       const matchesSelective =
         selectiveFilter === "all" ||
-        // Fully selective
         (selectiveFilter === "Fully selective" && sel === "fully selective") ||
-        // Partially selective
         (selectiveFilter === "Partially selective" &&
           sel === "partially selective") ||
-        // Non-selective (covers ALL NSW variations)
         (selectiveFilter === "non" &&
           (sel === "no" ||
             sel === "n" ||
@@ -1211,6 +1489,11 @@ function MapViewInner() {
     setSelectedSchool(null);
     setSearchForcedSchool(null);
     setSearchTerm("");
+    setAddressMarker(null);
+    setPrimaryCatchmentFeature(null);
+    setSecondaryCatchmentFeature(null);
+    setSecondarySchool(null);
+    setCatchmentView("primary");
   };
 
   const handleClearFilters = () => {
@@ -1220,6 +1503,9 @@ function MapViewInner() {
     setSelectiveFilter("all");
     setSearchForcedSchool(null);
   };
+
+  const showAddressToggle =
+    (primaryCatchmentFeature || secondaryCatchmentFeature) && addressMarker;
 
   if (loading)
     return (
@@ -1273,17 +1559,38 @@ function MapViewInner() {
       <div style={styles.appShell}>
         {/* HEADER */}
         <header style={styles.header}>
-          <div style={{ textAlign: "center", flex: 1 }}>
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+            }}
+          >
             <h1
               style={{
                 ...styles.headerTitle,
                 fontSize: isMobile ? "16px" : "20px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
               }}
             >
-              📍 Local School Map
+              <img
+                src="/logo_main.png"
+                alt="Logo"
+                style={{
+                  height: isMobile ? "28px" : "34px",
+                  width: "auto",
+                }}
+              />
+              Local School Map
             </h1>
             <p style={styles.headerSub}>
-              NSW Public School Boundaries (Unofficial)
+              NSW Public School Catchment Zones (Unofficial Tool)
             </p>
           </div>
           {isMobile && (
@@ -1307,16 +1614,118 @@ function MapViewInner() {
               left: !isMobile && selectedSchool ? "calc(50% - 150px)" : "50%",
             }}
           >
+            {/* SEARCH MODE TOGGLE (now directly under header) */}
+            <div
+              style={{
+                position: "absolute",
+                top: HEADER_HEIGHT + 6, // adjust this number to move it up/down
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 4100,
+                display: "flex",
+                background: "white",
+                borderRadius: 999,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                overflow: "hidden",
+                border: "1px solid #ddd",
+                fontSize: 11,
+              }}
+            >
+              <button
+                type="button"
+                style={styles.searchModeButton(searchMode === "school")}
+                onClick={() => {
+                  setSearchMode("school");
+                  setShowResults(false);
+                  setAddressResults([]);
+                }}
+              >
+                Schools / Suburbs
+              </button>
+              <button
+                type="button"
+                style={styles.searchModeButton(searchMode === "address")}
+                onClick={() => {
+                  setSearchMode("address");
+                  setShowResults(false);
+                }}
+              >
+                Residential address
+              </button>
+            </div>
+
+            {/* SEARCH BAR (moved lower to make room for toggle) */}
+            <div
+              style={{
+                ...styles.searchWrap,
+                marginTop: 40, // ← adjust this to fine‑tune spacing under the toggle
+                maxWidth: !isMobile && selectedSchool ? "380px" : "420px",
+                left: !isMobile && selectedSchool ? "calc(50% - 150px)" : "50%",
+              }}
+            >
+              {/* DROPDOWN */}
+              {showResults &&
+                (searchMode === "school"
+                  ? searchResults.length > 0
+                  : addressResults.length > 0 || addressLoading) && (
+                  <ul style={styles.searchDropdown}>
+                    {/* school mode */}
+                    {searchMode === "school" &&
+                      searchResults.map((item, i) => (
+                        <li
+                          key={i}
+                          className="search-item"
+                          onClick={() => handleSelect(item)}
+                          style={styles.searchItem}
+                        >
+                          {item.label}
+                        </li>
+                      ))}
+
+                    {/* address mode */}
+                    {searchMode === "address" && addressLoading && (
+                      <li style={{ ...styles.searchItem, color: "#777" }}>
+                        Searching addresses...
+                      </li>
+                    )}
+
+                    {searchMode === "address" &&
+                      !addressLoading &&
+                      addressResults.map((item, i) => (
+                        <li
+                          key={i}
+                          className="search-item"
+                          onClick={() => handleAddressSelect(item)}
+                          style={styles.searchItem}
+                        >
+                          {item.label}
+                        </li>
+                      ))}
+                  </ul>
+                )}
+            </div>
+
             <div style={styles.searchInner}>
               <input
                 type="text"
-                placeholder="Search schools or suburbs..."
+                placeholder={
+                  searchMode === "school"
+                    ? "Search schools or suburbs..."
+                    : "Search residential address..."
+                }
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
                   setShowResults(true);
                 }}
-                onFocus={() => searchTerm.length >= 2 && setShowResults(true)}
+                onFocus={() => {
+                  if (searchMode === "school" && searchTerm.length >= 2) {
+                    setShowResults(true);
+                  }
+                  if (searchMode === "address" && searchTerm.length >= 3) {
+                    setShowResults(true);
+                  }
+                }}
                 style={styles.searchInput}
               />
               {searchTerm && (
@@ -1325,28 +1734,126 @@ function MapViewInner() {
                 </button>
               )}
             </div>
-            {showResults && searchResults.length > 0 && (
-              <ul style={styles.searchDropdown}>
-                {searchResults.map((item, i) => (
-                  <li
-                    key={i}
-                    className="search-item"
-                    onClick={() => handleSelect(item)}
-                    style={styles.searchItem}
-                  >
-                    {item.label}
-                  </li>
-                ))}
-              </ul>
-            )}
+
+            {showResults &&
+              (searchMode === "school"
+                ? searchResults.length > 0
+                : addressResults.length > 0 || addressLoading) && (
+                <ul style={styles.searchDropdown}>
+                  {searchMode === "school" &&
+                    searchResults.map((item, i) => (
+                      <li
+                        key={i}
+                        className="search-item"
+                        onClick={() => handleSelect(item)}
+                        style={styles.searchItem}
+                      >
+                        {item.label}
+                      </li>
+                    ))}
+                  {searchMode === "address" && addressLoading && (
+                    <li style={{ ...styles.searchItem, color: "#777" }}>
+                      Searching addresses...
+                    </li>
+                  )}
+                  {searchMode === "address" &&
+                    !addressLoading &&
+                    addressResults.map((item, i) => (
+                      <li
+                        key={i}
+                        className="search-item"
+                        onClick={() => handleAddressSelect(item)}
+                        style={styles.searchItem}
+                      >
+                        {item.label}
+                      </li>
+                    ))}
+                  {searchMode === "address" &&
+                    !addressLoading &&
+                    addressResults.length === 0 &&
+                    searchTerm.trim().length >= 3 && (
+                      <li style={{ ...styles.searchItem, color: "#777" }}>
+                        No addresses found
+                      </li>
+                    )}
+                </ul>
+              )}
           </div>
+
+          {/* Address catchment toggle (Primary / Secondary) */}
+          {showAddressToggle && (
+            <div style={styles.addressCatchmentToggle}>
+              <button
+                type="button"
+                style={styles.addressCatchmentButton(
+                  catchmentView === "primary",
+                )}
+                onClick={() => {
+                  if (!primaryCatchmentFeature) return;
+                  setCatchmentView("primary");
+                  setActiveCatchment({
+                    type: "FeatureCollection",
+                    features: [primaryCatchmentFeature],
+                  });
+                  if (primaryCatchmentFeature.properties?.USE_ID) {
+                    const codeRaw = primaryCatchmentFeature.properties.USE_ID;
+                    const paddedCode = String(parseInt(codeRaw, 10)).padStart(
+                      4,
+                      "0",
+                    );
+                    const primarySchool =
+                      schools.find(
+                        (s) =>
+                          String(parseInt(s.code, 10)).padStart(4, "0") ===
+                          paddedCode,
+                      ) || null;
+                    if (primarySchool) setSelectedSchool(primarySchool);
+                  }
+                }}
+              >
+                Primary catchment
+              </button>
+              <button
+                type="button"
+                style={styles.addressCatchmentButton(
+                  catchmentView === "secondary",
+                )}
+                onClick={() => {
+                  if (!secondaryCatchmentFeature) return;
+                  setCatchmentView("secondary");
+                  setActiveCatchment({
+                    type: "FeatureCollection",
+                    features: [secondaryCatchmentFeature],
+                  });
+                  if (secondarySchool) {
+                    setSelectedSchool(secondarySchool);
+                  } else if (secondaryCatchmentFeature.properties?.USE_ID) {
+                    const codeRaw = secondaryCatchmentFeature.properties.USE_ID;
+                    const paddedCode = String(parseInt(codeRaw, 10)).padStart(
+                      4,
+                      "0",
+                    );
+                    const secSchool =
+                      schools.find(
+                        (s) =>
+                          String(parseInt(s.code, 10)).padStart(4, "0") ===
+                          paddedCode,
+                      ) || null;
+                    if (secSchool) setSelectedSchool(secSchool);
+                  }
+                }}
+              >
+                Secondary catchment
+              </button>
+            </div>
+          )}
 
           {/* Filter warning / clear pill */}
           {searchForcedSchool ? (
             <div
               style={{
                 position: "absolute",
-                top: 68,
+                top: showAddressToggle ? 100 : 68,
                 left: "50%",
                 transform: "translateX(-50%)",
                 zIndex: 2000,
@@ -1364,7 +1871,8 @@ function MapViewInner() {
               ⚠️ This school is hidden by your current filters
             </div>
           ) : (
-            activeCatchment && (
+            activeCatchment &&
+            !addressMarker && (
               <button style={styles.clearPill} onClick={handleClearAll}>
                 ✕ Clear
               </button>
@@ -1464,6 +1972,11 @@ function MapViewInner() {
                   });
                 }}
               />
+            )}
+
+            {/* Address marker */}
+            {addressMarker && (
+              <Marker position={[addressMarker.lat, addressMarker.lng]} />
             )}
 
             {schoolsToRender.map((school) => {
