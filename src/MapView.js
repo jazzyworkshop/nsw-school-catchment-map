@@ -1251,26 +1251,9 @@ function MapViewInner() {
     [fetchBoundary],
   );
 
-  const searchResults = useMemo(() => {
-    if (searchMode !== "school") return [];
-    if (searchTerm.length < 2) return [];
-    const lowerTerm = searchTerm.toLowerCase();
-    const suburbs = [...new Set(schools.map((s) => s.suburb))]
-      .filter((sub) => sub.toLowerCase().includes(lowerTerm))
-      .map((sub) => ({ type: "suburb", name: sub, label: `🏠 ${sub}` }));
-    const schoolMatches = schools
-      .filter((s) => s.name.toLowerCase().includes(lowerTerm))
-      .map((s) => ({ ...s, type: "school", label: `🎓 ${s.name}` }));
-    return [...suburbs, ...schoolMatches].slice(0, 10);
-  }, [searchTerm, schools, searchMode]);
-
   // Residential address search via Nominatim
+  // Address search always runs alongside school search
   useEffect(() => {
-    if (searchMode !== "address") {
-      setAddressResults([]);
-      setAddressLoading(false);
-      return;
-    }
     if (searchTerm.trim().length < 3) {
       setAddressResults([]);
       setAddressLoading(false);
@@ -1286,41 +1269,40 @@ function MapViewInner() {
         const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
           searchTerm.trim(),
         )}&addressdetails=1&limit=8&countrycodes=au`;
+
         const res = await fetch(url, {
           signal: controller.signal,
-          headers: {
-            // Nominatim recommends identifying the application; browser may ignore this but it's fine.
-            "Accept-Language": "en",
-          },
+          headers: { "Accept-Language": "en" },
         });
+
         if (!res.ok) throw new Error("Nominatim error");
+
         const data = await res.json();
         if (cancelled) return;
+
         const mapped = data.map((item) => ({
           type: "address",
-          label: `📍 ${item.display_name}`,
+          label: item.display_name,
           name: item.display_name,
           lat: parseFloat(item.lat),
           lng: parseFloat(item.lon),
         }));
+
         setAddressResults(mapped);
       } catch (e) {
-        if (!cancelled) {
-          console.error("Address search error", e);
-          setAddressResults([]);
-        }
+        if (!cancelled) setAddressResults([]);
       } finally {
         if (!cancelled) setAddressLoading(false);
       }
     }
 
-    const t = setTimeout(runSearch, 350); // simple debounce
+    const t = setTimeout(runSearch, 350);
     return () => {
       cancelled = true;
       controller.abort();
       clearTimeout(t);
     };
-  }, [searchTerm, searchMode]);
+  }, [searchTerm]);
 
   const handleSelect = (item) => {
     if (searchMode === "address") return; // handled separately
@@ -1445,6 +1427,25 @@ function MapViewInner() {
     }
   };
 
+  // Local school + suburb results
+  const schoolResults = useMemo(() => {
+    if (searchTerm.length < 2) return [];
+    const lower = searchTerm.toLowerCase();
+
+    const suburbs = [...new Set(schools.map((s) => s.suburb))]
+      .filter((sub) => sub.toLowerCase().includes(lower))
+      .map((sub) => ({ type: "suburb", name: sub, label: `🏠 ${sub}` }));
+
+    const schoolMatches = schools
+      .filter((s) => s.name.toLowerCase().includes(lower))
+      .map((s) => ({ ...s, type: "school", label: `🎓 ${s.name}` }));
+
+    return [...suburbs, ...schoolMatches];
+  }, [searchTerm, schools]);
+
+  // Combined results (for dropdown visibility)
+  const combinedResults = [...schoolResults, ...addressResults];
+
   const filteredSchools = useMemo(() => {
     return schools.filter((s) => {
       const typeLabel =
@@ -1555,7 +1556,6 @@ function MapViewInner() {
           border-top-color: rgba(0, 0, 0, 0.78) !important;
         }
       `}</style>
-
       <div style={styles.appShell}>
         {/* HEADER */}
         <header style={styles.header}>
@@ -1614,120 +1614,22 @@ function MapViewInner() {
               left: !isMobile && selectedSchool ? "calc(50% - 150px)" : "50%",
             }}
           >
-            {/* SEARCH MODE TOGGLE (now directly under header) */}
-            <div
-              style={{
-                position: "absolute",
-                top: HEADER_HEIGHT + 6, // adjust this number to move it up/down
-                left: "50%",
-                transform: "translateX(-50%)",
-                zIndex: 4100,
-                display: "flex",
-                background: "white",
-                borderRadius: 999,
-                boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-                overflow: "hidden",
-                border: "1px solid #ddd",
-                fontSize: 11,
-              }}
-            >
-              <button
-                type="button"
-                style={styles.searchModeButton(searchMode === "school")}
-                onClick={() => {
-                  setSearchMode("school");
-                  setShowResults(false);
-                  setAddressResults([]);
-                }}
-              >
-                Schools / Suburbs
-              </button>
-              <button
-                type="button"
-                style={styles.searchModeButton(searchMode === "address")}
-                onClick={() => {
-                  setSearchMode("address");
-                  setShowResults(false);
-                }}
-              >
-                Residential address
-              </button>
-            </div>
-
-            {/* SEARCH BAR (moved lower to make room for toggle) */}
-            <div
-              style={{
-                ...styles.searchWrap,
-                marginTop: 40, // ← adjust this to fine‑tune spacing under the toggle
-                maxWidth: !isMobile && selectedSchool ? "380px" : "420px",
-                left: !isMobile && selectedSchool ? "calc(50% - 150px)" : "50%",
-              }}
-            >
-              {/* DROPDOWN */}
-              {showResults &&
-                (searchMode === "school"
-                  ? searchResults.length > 0
-                  : addressResults.length > 0 || addressLoading) && (
-                  <ul style={styles.searchDropdown}>
-                    {/* school mode */}
-                    {searchMode === "school" &&
-                      searchResults.map((item, i) => (
-                        <li
-                          key={i}
-                          className="search-item"
-                          onClick={() => handleSelect(item)}
-                          style={styles.searchItem}
-                        >
-                          {item.label}
-                        </li>
-                      ))}
-
-                    {/* address mode */}
-                    {searchMode === "address" && addressLoading && (
-                      <li style={{ ...styles.searchItem, color: "#777" }}>
-                        Searching addresses...
-                      </li>
-                    )}
-
-                    {searchMode === "address" &&
-                      !addressLoading &&
-                      addressResults.map((item, i) => (
-                        <li
-                          key={i}
-                          className="search-item"
-                          onClick={() => handleAddressSelect(item)}
-                          style={styles.searchItem}
-                        >
-                          {item.label}
-                        </li>
-                      ))}
-                  </ul>
-                )}
-            </div>
-
+            {/* UNIFIED SEARCH BAR */}
             <div style={styles.searchInner}>
               <input
                 type="text"
-                placeholder={
-                  searchMode === "school"
-                    ? "Search schools or suburbs..."
-                    : "Search residential address..."
-                }
+                placeholder="Search schools, suburbs or addresses..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
                   setShowResults(true);
                 }}
                 onFocus={() => {
-                  if (searchMode === "school" && searchTerm.length >= 2) {
-                    setShowResults(true);
-                  }
-                  if (searchMode === "address" && searchTerm.length >= 3) {
-                    setShowResults(true);
-                  }
+                  if (searchTerm.length >= 2) setShowResults(true);
                 }}
                 style={styles.searchInput}
               />
+
               {searchTerm && (
                 <button onClick={handleClearAll} style={styles.searchClear}>
                   ✕
@@ -1735,49 +1637,73 @@ function MapViewInner() {
               )}
             </div>
 
-            {showResults &&
-              (searchMode === "school"
-                ? searchResults.length > 0
-                : addressResults.length > 0 || addressLoading) && (
-                <ul style={styles.searchDropdown}>
-                  {searchMode === "school" &&
-                    searchResults.map((item, i) => (
-                      <li
-                        key={i}
-                        className="search-item"
-                        onClick={() => handleSelect(item)}
-                        style={styles.searchItem}
-                      >
-                        {item.label}
-                      </li>
-                    ))}
-                  {searchMode === "address" && addressLoading && (
-                    <li style={{ ...styles.searchItem, color: "#777" }}>
-                      Searching addresses...
+            {/* UNIFIED DROPDOWN */}
+            {showResults && (combinedResults.length > 0 || addressLoading) && (
+              <ul style={styles.searchDropdown}>
+                {/* Schools & Suburbs header */}
+                {schoolResults.length > 0 && (
+                  <li
+                    style={{
+                      padding: "6px 10px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "#666",
+                      background: "#f7f7f7",
+                    }}
+                  >
+                    Schools & Suburbs
+                  </li>
+                )}
+
+                {/* School + suburb results */}
+                {schoolResults.map((item, i) => (
+                  <li
+                    key={`school-${i}`}
+                    className="search-item"
+                    onClick={() => handleSelect(item)}
+                    style={styles.searchItem}
+                  >
+                    {item.label}
+                  </li>
+                ))}
+
+                {/* Address header */}
+                {addressResults.length > 0 && (
+                  <li
+                    style={{
+                      padding: "6px 10px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "#666",
+                      background: "#f7f7f7",
+                      marginTop: "4px",
+                    }}
+                  >
+                    Addresses
+                  </li>
+                )}
+
+                {/* Address loading */}
+                {addressLoading && (
+                  <li style={{ ...styles.searchItem, color: "#777" }}>
+                    Searching addresses...
+                  </li>
+                )}
+
+                {/* Address results */}
+                {!addressLoading &&
+                  addressResults.map((item, i) => (
+                    <li
+                      key={`addr-${i}`}
+                      className="search-item"
+                      onClick={() => handleAddressSelect(item)}
+                      style={styles.searchItem}
+                    >
+                      📍 {item.label}
                     </li>
-                  )}
-                  {searchMode === "address" &&
-                    !addressLoading &&
-                    addressResults.map((item, i) => (
-                      <li
-                        key={i}
-                        className="search-item"
-                        onClick={() => handleAddressSelect(item)}
-                        style={styles.searchItem}
-                      >
-                        {item.label}
-                      </li>
-                    ))}
-                  {searchMode === "address" &&
-                    !addressLoading &&
-                    addressResults.length === 0 &&
-                    searchTerm.trim().length >= 3 && (
-                      <li style={{ ...styles.searchItem, color: "#777" }}>
-                        No addresses found
-                      </li>
-                    )}
-                </ul>
-              )}
+                  ))}
+              </ul>
+            )}
           </div>
 
           {/* Address catchment toggle (Primary / Secondary) */}
@@ -2059,8 +1985,8 @@ function MapViewInner() {
           </strong>{" "}
           Data: NSW Dept of Education Open Data (April 2026).
         </footer>
-      </div>
-
+      </div>{" "}
+      {/* closes appShell */}
       {/* Filter panel outside app shell */}
       <FilterPanel
         isMobile={isMobile}
