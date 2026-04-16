@@ -12,14 +12,25 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import * as turf from "@turf/turf";
 
-// Catchment type helpers
+/* ────────────────────────────────────────────────────────────────
+   CATCHMENT TYPE HELPERS
+   ──────────────────────────────────────────────────────────────── */
 const isPrimaryCatchment = (f) =>
   f?.properties?.CATCH_TYPE?.toLowerCase() === "primary";
 
 const isSecondaryCatchment = (f) => {
-  const type = f?.properties?.CATCH_TYPE?.toLowerCase();
-  return type === "secondary" || type === "high school" || type === "hs";
+  const type = (f?.properties?.CATCH_TYPE || "").toLowerCase();
+  const desc = (f?.properties?.USE_DESC || "").toLowerCase();
+  return (
+    type.includes("high") || // catches HIGH_COED, HIGH_BOYS, HIGH_GIRLS, HIGH
+    type.includes("secondary") ||
+    type.includes("central") ||
+    desc.includes("high") || // catches "Billabong HS", "XYZ High School"
+    desc.includes("secondary") || // catches "Secondary College", etc.
+    desc.includes("central")
+  );
 };
+
 /* ────────────────────────────────────────────────────────────────
    MAP ERROR BOUNDARY
    ──────────────────────────────────────────────────────────────── */
@@ -114,7 +125,7 @@ const SELECTIVE_LABELS = {
 
 const HEADER_HEIGHT = 56;
 
-/* ───────────────────────────────────────────────────────────��────
+/* ────────────────────────────────────────────────────────────────
    INLINE STYLES
    ──────────────────────────────────────────────────────────────── */
 const styles = {
@@ -650,6 +661,9 @@ function FilterContent({
   );
 }
 
+/* ────────────────────────────────────────────────────────────────
+   SMALL UI HELPERS
+   ──────────────────────────────────────────────────────────────── */
 function SectionLabel({ children }) {
   return (
     <div
@@ -962,7 +976,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
           </button>
         </div>
 
-        {/* Modern info list */}
+        {/* Info list */}
         <div style={{ paddingTop: 6 }}>
           <div style={infoRowStyle}>
             <span style={labelStyle}>School type</span>
@@ -1062,6 +1076,9 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
   );
 }
 
+/* ────────────────────────────────────────────────────────────────
+   GEOMETRY HELPER
+   ──────────────────────────────────────────────────────────────── */
 function pointInFeature(lat, lng, feature) {
   if (!feature || !feature.geometry) return false;
 
@@ -1072,6 +1089,7 @@ function pointInFeature(lat, lng, feature) {
     return false;
   }
 }
+
 /* ────────────────────────────────────────────────────────────────
    MAIN MAP VIEW (logic)
    ──────────────────────────────────────────────────────────────── */
@@ -1104,10 +1122,9 @@ function MapViewInner() {
   const [primaryCatchmentFeature, setPrimaryCatchmentFeature] = useState(null);
   const [secondaryCatchmentFeature, setSecondaryCatchmentFeature] =
     useState(null);
-  const [secondarySchool, setSecondarySchool] = useState(null);
   const [catchmentView, setCatchmentView] = useState("primary"); // "primary" | "secondary"
 
-  // OPTIMIZATION: Preload catchments on app mount
+  // Preload catchments on app mount
   useEffect(() => {
     async function preloadCatchments() {
       try {
@@ -1128,7 +1145,7 @@ function MapViewInner() {
     preloadCatchments();
   }, []);
 
-  // OPTIMIZATION: Create O(1) lookup index for instant catchment retrieval
+  // O(1) lookup index for catchments
   const catchmentIndex = useMemo(() => {
     if (!window._catchmentCache) return {};
     const index = {};
@@ -1142,7 +1159,7 @@ function MapViewInner() {
       "schools",
     );
     return index;
-  }, [window._catchmentCache]);
+  }, []); // cache is global; rebuilt only once per mount
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -1212,7 +1229,51 @@ function MapViewInner() {
     return window._catchmentCache;
   }, []);
 
-  // OPTIMIZATION: Use index for instant O(1) lookup instead of async O(n) search
+  // Clear everything (used by clear pill, search clear, and map click)
+  function handleClearAll() {
+    setActiveCatchment(null);
+    setSelectedSchool(null);
+    setSearchForcedSchool(null);
+    setSearchTerm("");
+    setAddressMarker(null);
+    setPrimaryCatchmentFeature(null);
+    setSecondaryCatchmentFeature(null);
+    setCatchmentView("primary");
+  }
+
+  const handleClearFilters = () => {
+    setTypeFilters(Object.keys(SCHOOL_COLORS));
+    setGenderFilter("All");
+    setOcFilter(false);
+    setSelectiveFilter("all");
+    setSearchForcedSchool(null);
+  };
+
+  // Map click: click outside catchment clears; inside does nothing
+  const handleMapClick = useCallback(
+    (e) => {
+      setShowResults(false);
+
+      const { lat, lng } = e.latlng;
+
+      if (!primaryCatchmentFeature && !secondaryCatchmentFeature) return;
+
+      const insidePrimary = primaryCatchmentFeature
+        ? pointInFeature(lat, lng, primaryCatchmentFeature)
+        : false;
+
+      const insideSecondary = secondaryCatchmentFeature
+        ? pointInFeature(lat, lng, secondaryCatchmentFeature)
+        : false;
+
+      if (insidePrimary || insideSecondary) return;
+
+      handleClearAll();
+    },
+    [primaryCatchmentFeature, secondaryCatchmentFeature],
+  );
+
+  // School click → use index for instant catchment lookup
   const handleSchoolClick = useCallback(
     (school) => {
       setSelectedSchool(school);
@@ -1220,7 +1281,6 @@ function MapViewInner() {
       setAddressMarker(null);
       setPrimaryCatchmentFeature(null);
       setSecondaryCatchmentFeature(null);
-      setSecondarySchool(null);
 
       const paddedCode = String(parseInt(school.code, 10)).padStart(4, "0");
       const feature = catchmentIndex[paddedCode];
@@ -1234,8 +1294,7 @@ function MapViewInner() {
     [catchmentIndex],
   );
 
-  // Residential address search via Nominatim
-  // Address search always runs alongside school search
+  // Address search (Nominatim)
   useEffect(() => {
     if (searchTerm.trim().length < 3) {
       setAddressResults([]);
@@ -1293,7 +1352,6 @@ function MapViewInner() {
     setAddressMarker(null);
     setPrimaryCatchmentFeature(null);
     setSecondaryCatchmentFeature(null);
-    setSecondarySchool(null);
 
     if (item.type === "school") {
       setMapTarget([item.lat, item.lng]);
@@ -1401,17 +1459,6 @@ function MapViewInner() {
         setCatchmentView("secondary");
       }
 
-      if (secondaryFeature) {
-        const codeRaw = secondaryFeature.properties?.USE_ID;
-        const paddedCode = String(parseInt(codeRaw, 10)).padStart(4, "0");
-        const secSchool =
-          schools.find(
-            (s) => String(parseInt(s.code, 10)).padStart(4, "0") === paddedCode,
-          ) || null;
-        setSecondarySchool(secSchool || null);
-      } else {
-        setSecondarySchool(null);
-      }
       console.log("Address search result:", {
         primaryFeature: primaryFeature?.properties?.USE_DESC,
         secondaryFeature: secondaryFeature?.properties?.USE_DESC,
@@ -1439,7 +1486,6 @@ function MapViewInner() {
     return [...suburbs, ...schoolMatches];
   }, [searchTerm, schools]);
 
-  // Combined results (for dropdown visibility)
   const combinedResults = [...schoolResults, ...addressResults];
 
   const filteredSchools = useMemo(() => {
@@ -1480,26 +1526,6 @@ function MapViewInner() {
     }
     return [...filteredSchools, searchForcedSchool];
   }, [filteredSchools, searchForcedSchool]);
-
-  const handleClearAll = () => {
-    setActiveCatchment(null);
-    setSelectedSchool(null);
-    setSearchForcedSchool(null);
-    setSearchTerm("");
-    setAddressMarker(null);
-    setPrimaryCatchmentFeature(null);
-    setSecondaryCatchmentFeature(null);
-    setSecondarySchool(null);
-    setCatchmentView("primary");
-  };
-
-  const handleClearFilters = () => {
-    setTypeFilters(Object.keys(SCHOOL_COLORS));
-    setGenderFilter("All");
-    setOcFilter(false);
-    setSelectiveFilter("all");
-    setSearchForcedSchool(null);
-  };
 
   const showAddressToggle =
     (primaryCatchmentFeature || secondaryCatchmentFeature) && addressMarker;
@@ -1610,7 +1636,7 @@ function MapViewInner() {
               left: !isMobile && selectedSchool ? "calc(50% - 150px)" : "50%",
             }}
           >
-            {/* UNIFIED SEARCH BAR */}
+            {/* Unified search bar */}
             <div style={styles.searchInner}>
               <input
                 type="text"
@@ -1625,7 +1651,6 @@ function MapViewInner() {
                 }}
                 style={styles.searchInput}
               />
-
               {searchTerm && (
                 <button onClick={handleClearAll} style={styles.searchClear}>
                   ✕
@@ -1633,7 +1658,7 @@ function MapViewInner() {
               )}
             </div>
 
-            {/* UNIFIED DROPDOWN */}
+            {/* Unified dropdown */}
             {showResults && (combinedResults.length > 0 || addressLoading) && (
               <ul style={styles.searchDropdown}>
                 {/* Schools & Suburbs header */}
@@ -1748,7 +1773,6 @@ function MapViewInner() {
                     features: [secondaryCatchmentFeature],
                   });
 
-                  // FIXED: Look up the secondary school and display it
                   const codeRaw = secondaryCatchmentFeature.properties?.USE_ID;
                   if (codeRaw) {
                     const paddedCode = String(parseInt(codeRaw, 10)).padStart(
@@ -1813,7 +1837,7 @@ function MapViewInner() {
             zoom={11}
             style={{ height: "100%", width: "100%" }}
             zoomControl={false}
-            onClick={() => setShowResults(false)}
+            onClick={handleMapClick}
           >
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -1866,7 +1890,6 @@ function MapViewInner() {
                 onEachFeature={(feature, layer) => {
                   if (!layer) return;
 
-                  // Tooltip stays exactly as you have it
                   const schoolName =
                     feature.properties?.USE_DESC || "Future Zone";
                   try {
@@ -1877,7 +1900,6 @@ function MapViewInner() {
                     });
                   } catch {}
 
-                  // --- SAFE EVENT HANDLERS ---
                   const safeSetStyle = (style) => {
                     if (!layer || !layer._map || !layer._path) return;
                     try {
@@ -1905,7 +1927,6 @@ function MapViewInner() {
                     click: handleClick,
                   });
 
-                  // 🔥 CRITICAL FIX: remove handlers when layer is removed
                   layer.on("remove", () => {
                     try {
                       layer.off("mouseover", handleMouseOver);
@@ -1954,7 +1975,10 @@ function MapViewInner() {
                     dashArray: isForced && !isSelected ? "4 3" : undefined,
                   }}
                   eventHandlers={{
-                    click: () => {
+                    click: (e) => {
+                      if (e.originalEvent) {
+                        e.originalEvent.cancelBubble = true;
+                      }
                       handleSchoolClick(school);
                       setShowResults(false);
                     },
@@ -2002,9 +2026,9 @@ function MapViewInner() {
           </strong>{" "}
           Data: NSW Dept of Education Open Data (April 2026).
         </footer>
-      </div>{" "}
-      {/* closes appShell */}
-      {/* Filter panel outside app shell */}
+      </div>
+
+      {/* Filter panel */}
       <FilterPanel
         isMobile={isMobile}
         isOpen={filterOpen}
@@ -2025,7 +2049,7 @@ function MapViewInner() {
   );
 }
 
-/* ─────────────────────────��──────────────────────────────────────
+/* ────────────────────────────────────────────────────────────────
    WRAPPED EXPORT WITH ERROR BOUNDARY
    ──────────────────────────────────────────────────────────────── */
 function MapView() {
