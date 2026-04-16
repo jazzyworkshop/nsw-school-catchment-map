@@ -10,7 +10,16 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import * as turf from "@turf/turf";
 
+// Catchment type helpers
+const isPrimaryCatchment = (f) =>
+  f?.properties?.CATCH_TYPE?.toLowerCase() === "primary";
+
+const isSecondaryCatchment = (f) => {
+  const type = f?.properties?.CATCH_TYPE?.toLowerCase();
+  return type === "secondary" || type === "high school" || type === "hs";
+};
 /* ────────────────────────────────────────────────────────────────
    MAP ERROR BOUNDARY
    ──────────────────────────────────────────────────────────────── */
@@ -105,7 +114,7 @@ const SELECTIVE_LABELS = {
 
 const HEADER_HEIGHT = 56;
 
-/* ────────────────────────────────────────────────────────────────
+/* ───────────────────────────────────────────────────────────��────
    INLINE STYLES
    ──────────────────────────────────────────────────────────────── */
 const styles = {
@@ -784,7 +793,7 @@ function ToggleRow({ checked, onChange, label, icon, sublabel, tooltip }) {
 }
 
 /* ────────────────────────────────────────────────────────────────
-   SCHOOL INFO CARD (modern list + updated School Finder label)
+   SCHOOL INFO CARD
    ──────────────────────────────────────────────────────────────── */
 function SchoolInfoCard({ school, isMobile, onClose }) {
   if (!school) return null;
@@ -1053,78 +1062,22 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
   );
 }
 
-/* ────────────────────────────────────────────────────────────────
-   HELPERS: CATCHMENT + POINT-IN-POLYGON
-   ──────────────────────────────────────────────────────────────── */
-
-// Basic ray-casting point-in-polygon for [lng, lat] arrays
-function pointInRing(point, ring) {
-  const [x, y] = point;
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i];
-    const [xj, yj] = ring[j];
-    const intersect =
-      yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi + 0.0) + xi;
-    if (intersect) inside = !inside;
-  }
-  return inside;
-}
-
-function pointInPolygon(point, polygonCoords) {
-  // polygonCoords: [ [ [lng,lat], ... ] , ... ] (outer + holes)
-  if (!Array.isArray(polygonCoords) || polygonCoords.length === 0) return false;
-  const outerRing = polygonCoords[0];
-  if (!pointInRing(point, outerRing)) return false;
-  // ignore holes for now (good enough for school zones)
-  return true;
-}
-
 function pointInFeature(lat, lng, feature) {
   if (!feature || !feature.geometry) return false;
-  const { type, coordinates } = feature.geometry;
-  const pt = [lng, lat];
 
-  if (type === "Polygon") {
-    return pointInPolygon(pt, coordinates);
+  try {
+    return turf.booleanPointInPolygon(turf.point([lng, lat]), feature);
+  } catch (e) {
+    console.error("turf.booleanPointInPolygon error:", e);
+    return false;
   }
-  if (type === "MultiPolygon") {
-    return coordinates.some((poly) => pointInPolygon(pt, poly));
-  }
-  return false;
 }
-
-function isPrimaryCatchment(feature) {
-  const props = feature.properties || {};
-  const ct = (props.CATCH_TYPE || "").toLowerCase();
-  const desc = (props.USE_DESC || "").toLowerCase();
-
-  if (ct.includes("primary")) return true;
-  if (desc.includes("public school") && !desc.includes("high school"))
-    return true;
-  if (desc.includes("primary school")) return true;
-  return false;
-}
-
-function isSecondaryCatchment(feature) {
-  const props = feature.properties || {};
-  const ct = (props.CATCH_TYPE || "").toLowerCase();
-  const desc = (props.USE_DESC || "").toLowerCase();
-
-  if (ct.includes("secondary")) return true;
-  if (desc.includes("high school")) return true;
-  if (desc.includes("secondary college")) return true;
-  return false;
-}
-
 /* ────────────────────────────────────────────────────────────────
    MAIN MAP VIEW (logic)
    ──────────────────────────────────────────────────────────────── */
 function MapViewInner() {
   const [schools, setSchools] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [searchMode, setSearchMode] = useState("school"); // "school" | "address"
-
   const [activeCatchment, setActiveCatchment] = useState(null);
   const [futureCatchments, setFutureCatchments] = useState(null);
   const [mapTarget, setMapTarget] = useState(null);
@@ -1153,6 +1106,43 @@ function MapViewInner() {
     useState(null);
   const [secondarySchool, setSecondarySchool] = useState(null);
   const [catchmentView, setCatchmentView] = useState("primary"); // "primary" | "secondary"
+
+  // OPTIMIZATION: Preload catchments on app mount
+  useEffect(() => {
+    async function preloadCatchments() {
+      try {
+        if (!window._catchmentCache) {
+          const res = await fetch("/catchments.geojson");
+          if (!res.ok) throw new Error("Failed to load catchments");
+          window._catchmentCache = await res.json();
+          console.log(
+            "✓ Catchments preloaded:",
+            window._catchmentCache.features.length,
+            "features",
+          );
+        }
+      } catch (e) {
+        console.error("Catchment preload error:", e);
+      }
+    }
+    preloadCatchments();
+  }, []);
+
+  // OPTIMIZATION: Create O(1) lookup index for instant catchment retrieval
+  const catchmentIndex = useMemo(() => {
+    if (!window._catchmentCache) return {};
+    const index = {};
+    window._catchmentCache.features.forEach((feature) => {
+      const code = String(feature.properties.USE_ID).padStart(4, "0");
+      index[code] = feature;
+    });
+    console.log(
+      "✓ Catchment index built:",
+      Object.keys(index).length,
+      "schools",
+    );
+    return index;
+  }, [window._catchmentCache]);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -1222,22 +1212,7 @@ function MapViewInner() {
     return window._catchmentCache;
   }, []);
 
-  const fetchBoundary = useCallback(
-    async (code) => {
-      const cache = await ensureCatchmentCache();
-      const paddedCode = String(parseInt(code, 10)).padStart(4, "0");
-      const feature = cache.features.find(
-        (f) => String(f.properties.USE_ID).padStart(4, "0") === paddedCode,
-      );
-      if (feature) {
-        setActiveCatchment({ type: "FeatureCollection", features: [feature] });
-      } else {
-        setActiveCatchment(null);
-      }
-    },
-    [ensureCatchmentCache],
-  );
-
+  // OPTIMIZATION: Use index for instant O(1) lookup instead of async O(n) search
   const handleSchoolClick = useCallback(
     (school) => {
       setSelectedSchool(school);
@@ -1246,9 +1221,17 @@ function MapViewInner() {
       setPrimaryCatchmentFeature(null);
       setSecondaryCatchmentFeature(null);
       setSecondarySchool(null);
-      fetchBoundary(school.code);
+
+      const paddedCode = String(parseInt(school.code, 10)).padStart(4, "0");
+      const feature = catchmentIndex[paddedCode];
+
+      if (feature) {
+        setActiveCatchment({ type: "FeatureCollection", features: [feature] });
+      } else {
+        setActiveCatchment(null);
+      }
     },
-    [fetchBoundary],
+    [catchmentIndex],
   );
 
   // Residential address search via Nominatim
@@ -1305,7 +1288,6 @@ function MapViewInner() {
   }, [searchTerm]);
 
   const handleSelect = (item) => {
-    if (searchMode === "address") return; // handled separately
     setSearchTerm(item.name);
     setShowResults(false);
     setAddressMarker(null);
@@ -1316,7 +1298,12 @@ function MapViewInner() {
     if (item.type === "school") {
       setMapTarget([item.lat, item.lng]);
       setSelectedSchool(item);
-      fetchBoundary(item.code);
+
+      const paddedCode = String(parseInt(item.code, 10)).padStart(4, "0");
+      const feature = catchmentIndex[paddedCode];
+      if (feature) {
+        setActiveCatchment({ type: "FeatureCollection", features: [feature] });
+      }
 
       const typeLabel =
         Object.keys(SCHOOL_COLORS).find((k) => item.level?.includes(k)) ||
@@ -1361,16 +1348,19 @@ function MapViewInner() {
 
       for (const f of features) {
         if (!f.geometry) continue;
+
         if (!primaryFeature && isPrimaryCatchment(f)) {
           if (pointInFeature(item.lat, item.lng, f)) {
             primaryFeature = f;
           }
         }
+
         if (!secondaryFeature && isSecondaryCatchment(f)) {
           if (pointInFeature(item.lat, item.lng, f)) {
             secondaryFeature = f;
           }
         }
+
         if (primaryFeature && secondaryFeature) break;
       }
 
@@ -1422,6 +1412,12 @@ function MapViewInner() {
       } else {
         setSecondarySchool(null);
       }
+      console.log("Address search result:", {
+        primaryFeature: primaryFeature?.properties?.USE_DESC,
+        secondaryFeature: secondaryFeature?.properties?.USE_DESC,
+        addressLat: item.lat,
+        addressLng: item.lng,
+      });
     } catch (e) {
       console.error("Address catchment detection error", e);
     }
@@ -1751,21 +1747,27 @@ function MapViewInner() {
                     type: "FeatureCollection",
                     features: [secondaryCatchmentFeature],
                   });
-                  if (secondarySchool) {
-                    setSelectedSchool(secondarySchool);
-                  } else if (secondaryCatchmentFeature.properties?.USE_ID) {
-                    const codeRaw = secondaryCatchmentFeature.properties.USE_ID;
+
+                  // FIXED: Look up the secondary school and display it
+                  const codeRaw = secondaryCatchmentFeature.properties?.USE_ID;
+                  if (codeRaw) {
                     const paddedCode = String(parseInt(codeRaw, 10)).padStart(
                       4,
                       "0",
                     );
-                    const secSchool =
-                      schools.find(
-                        (s) =>
-                          String(parseInt(s.code, 10)).padStart(4, "0") ===
-                          paddedCode,
-                      ) || null;
-                    if (secSchool) setSelectedSchool(secSchool);
+                    const secSchool = schools.find(
+                      (s) =>
+                        String(parseInt(s.code, 10)).padStart(4, "0") ===
+                        paddedCode,
+                    );
+                    if (secSchool) {
+                      setSelectedSchool(secSchool);
+                    } else {
+                      console.warn(
+                        "Secondary school not found for code:",
+                        paddedCode,
+                      );
+                    }
                   }
                 }}
               >
@@ -1863,6 +1865,8 @@ function MapViewInner() {
                 }}
                 onEachFeature={(feature, layer) => {
                   if (!layer) return;
+
+                  // Tooltip stays exactly as you have it
                   const schoolName =
                     feature.properties?.USE_DESC || "Future Zone";
                   try {
@@ -1873,28 +1877,41 @@ function MapViewInner() {
                     });
                   } catch {}
 
+                  // --- SAFE EVENT HANDLERS ---
+                  const safeSetStyle = (style) => {
+                    if (!layer || !layer._map || !layer._path) return;
+                    try {
+                      layer.setStyle(style);
+                    } catch {}
+                  };
+
+                  const handleMouseOver = () =>
+                    safeSetStyle({ weight: 3.5, color: "#cc6600" });
+
+                  const handleMouseOut = () =>
+                    safeSetStyle({ weight: 2.5, color: "#FF8C00" });
+
+                  const handleClick = () => {
+                    const map = layer._map;
+                    if (!map || !layer.getBounds) return;
+                    try {
+                      map.fitBounds(layer.getBounds(), { padding: [40, 40] });
+                    } catch {}
+                  };
+
                   layer.on({
-                    mouseover: () => {
-                      if (!layer || !layer._map || !layer._path) return;
-                      try {
-                        layer.setStyle({ weight: 3.5, color: "#cc6600" });
-                      } catch {}
-                    },
-                    mouseout: () => {
-                      if (!layer || !layer._map || !layer._path) return;
-                      try {
-                        layer.setStyle({ weight: 2.5, color: "#FF8C00" });
-                      } catch {}
-                    },
-                    click: () => {
-                      const map = layer._map;
-                      if (!map || !layer.getBounds) return;
-                      try {
-                        map.fitBounds(layer.getBounds(), {
-                          padding: [40, 40],
-                        });
-                      } catch {}
-                    },
+                    mouseover: handleMouseOver,
+                    mouseout: handleMouseOut,
+                    click: handleClick,
+                  });
+
+                  // 🔥 CRITICAL FIX: remove handlers when layer is removed
+                  layer.on("remove", () => {
+                    try {
+                      layer.off("mouseover", handleMouseOver);
+                      layer.off("mouseout", handleMouseOut);
+                      layer.off("click", handleClick);
+                    } catch {}
                   });
                 }}
               />
@@ -2008,7 +2025,7 @@ function MapViewInner() {
   );
 }
 
-/* ────────────────────────────────────────────────────────────────
+/* ─────────────────────────��──────────────────────────────────────
    WRAPPED EXPORT WITH ERROR BOUNDARY
    ──────────────────────────────────────────────────────────────── */
 function MapView() {
