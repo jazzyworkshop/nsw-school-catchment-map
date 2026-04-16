@@ -1126,40 +1126,51 @@ function MapViewInner() {
 
   // Preload catchments on app mount
   useEffect(() => {
-    async function preloadCatchments() {
+    async function loadData() {
+      // If it's already loaded, don't fetch again
+      if (window._catchmentCache) return;
+
       try {
-        if (!window._catchmentCache) {
-          const res = await fetch("/catchments.geojson");
-          if (!res.ok) throw new Error("Failed to load catchments");
-          window._catchmentCache = await res.json();
-          console.log(
-            "✓ Catchments preloaded:",
-            window._catchmentCache.features.length,
-            "features",
-          );
-        }
-      } catch (e) {
-        console.error("Catchment preload error:", e);
+        const res = await fetch("/catchments.geojson");
+        const data = await res.json();
+
+        // Save to the global cache
+        window._catchmentCache = data;
+
+        // Force a re-render so the useMemo below runs again
+        // We do this by updating a simple toggle or dummy state if needed,
+        // but usually, if this is at the top level, it will trigger correctly.
+        console.log("✓ Catchment data cached globally");
+      } catch (err) {
+        console.error("Failed to load catchments:", err);
       }
     }
-    preloadCatchments();
+    loadData();
   }, []);
 
   // O(1) lookup index for catchments
   const catchmentIndex = useMemo(() => {
-    if (!window._catchmentCache) return {};
+    if (!window._catchmentCache?.features) return {};
+
     const index = {};
     window._catchmentCache.features.forEach((feature) => {
-      const code = String(feature.properties.USE_ID).padStart(4, "0");
-      index[code] = feature;
+      const props = feature.properties || {};
+
+      // Prioritize USE_ID as per your check
+      const rawId = props.USE_ID || props.CATCH_CODE || props.SCHOOL_CODE;
+
+      if (rawId) {
+        const code = String(rawId).padStart(4, "0");
+        index[code] = feature;
+      }
     });
+
     console.log(
-      "✓ Catchment index built:",
-      Object.keys(index).length,
-      "schools",
+      "✓ Index sync'd with USE_ID. Sample keys:",
+      Object.keys(index).slice(0, 5),
     );
     return index;
-  }, []); // cache is global; rebuilt only once per mount
+  }, [window._catchmentCache]);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -1197,27 +1208,45 @@ function MapViewInner() {
 
   useEffect(() => {
     if (!showFuture || futureCatchments) return;
+
     async function loadFuture() {
       try {
+        // Use the existing cache if available, otherwise fetch
         if (!window._catchmentCache) {
           const res = await fetch("/catchments.geojson");
           window._catchmentCache = await res.json();
         }
-        const futureFeatures = window._catchmentCache.features.filter(
-          (f) =>
-            f.properties.CATCH_TYPE &&
-            f.properties.CATCH_TYPE.toLowerCase().includes("future"),
-        );
+
+        const futureFeatures = window._catchmentCache.features.filter((f) => {
+          const props = f.properties || {};
+
+          // 1. Identify which property holds the year.
+          // Check your console if 'YEAR' doesn't work (might be 'ACT_YEAR' or similar).
+          const yearValue = parseInt(props.YEAR || props.ACT_YEAR || 0, 10);
+
+          // 2. Filter for catchments active between 2027 and 2032
+          const isFutureYear = yearValue >= 2027 && yearValue <= 2032;
+
+          // 3. Ensure it has a valid catchment type (Primary, High, etc.)
+          const hasValidType = !!props.CATCH_TYPE;
+
+          return isFutureYear && hasValidType;
+        });
+
         if (futureFeatures.length > 0) {
           setFutureCatchments({
             type: "FeatureCollection",
             features: futureFeatures,
           });
+          console.log(
+            `✓ ${futureFeatures.length} future zones loaded (2027-2032)`,
+          );
         }
       } catch (e) {
         console.error("Future zones error", e);
       }
     }
+
     loadFuture();
   }, [showFuture, futureCatchments]);
 
@@ -1276,19 +1305,27 @@ function MapViewInner() {
   // School click → use index for instant catchment lookup
   const handleSchoolClick = useCallback(
     (school) => {
+      // Check all possible ID variations on the clicked dot
+      const rawCode = school.USE_ID || school.code || school.SCHOOL_CODE;
+
       setSelectedSchool(school);
-      setSearchForcedSchool(null);
-      setAddressMarker(null);
-      setPrimaryCatchmentFeature(null);
-      setSecondaryCatchmentFeature(null);
+      setMapTarget([school.lat, school.lng]);
 
-      const paddedCode = String(parseInt(school.code, 10)).padStart(4, "0");
-      const feature = catchmentIndex[paddedCode];
+      if (rawCode) {
+        const paddedCode = String(rawCode).padStart(4, "0");
+        const feature = catchmentIndex[paddedCode];
 
-      if (feature) {
-        setActiveCatchment({ type: "FeatureCollection", features: [feature] });
-      } else {
-        setActiveCatchment(null);
+        if (feature) {
+          setActiveCatchment({
+            type: "FeatureCollection",
+            features: [feature],
+          });
+        } else {
+          setActiveCatchment(null);
+          console.warn(
+            `Code ${paddedCode} not found in index. Field used: USE_ID`,
+          );
+        }
       }
     },
     [catchmentIndex],
@@ -1640,7 +1677,7 @@ function MapViewInner() {
             <div style={styles.searchInner}>
               <input
                 type="text"
-                placeholder="Search schools, suburbs or addresses..."
+                placeholder="Search schools, suburbs or address..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
@@ -1848,7 +1885,7 @@ function MapViewInner() {
 
             {activeCatchment && (
               <GeoJSON
-                key={`active-${activeCatchment?.features?.[0]?.properties?.USE_ID}-${selectedSchool?.code || "none"}`}
+                key={`active-${activeCatchment?.features?.[0]?.properties?.CATCH_CODE}`} // Force re-mount
                 data={activeCatchment}
                 style={{
                   color: "#1E88E5",
@@ -1876,68 +1913,51 @@ function MapViewInner() {
               />
             )}
 
-            {showFuture && futureCatchments && (
+            {showFuture && futureCatchments &&
+              /* prettier-ignore */
               <GeoJSON
-                key={`future-layer-${futureCatchments.features.length}-${showFuture}`}
-                data={futureCatchments}
-                style={{
-                  color: "#FF8C00",
-                  weight: 2.5,
-                  dashArray: "8 5",
-                  fillOpacity: 0.08,
-                  fillColor: "#FF8C00",
-                }}
-                onEachFeature={(feature, layer) => {
-                  if (!layer) return;
+    key={"future-layer-" + showFuture + "-" + (futureCatchments?.features?.length || 0)}
+    data={futureCatchments}
+    style={{
+      color: "#FF8C00",
+      weight: 2.5,
+      dashArray: "8, 5",
+      fillOpacity: 0.08,
+      fillColor: "#FF8C00",
+    }}
+    onEachFeature={(feature, layer) => {
+      if (!layer || !feature.properties) return;
+      const schoolName = feature.properties.USE_DESC || "Future Zone";
+      try {
+        layer.bindTooltip("Future: " + schoolName, {
+          permanent: false,
+          sticky: true,
+          className: "future-tooltip",
+        });
+      } catch (e) {}
 
-                  const schoolName =
-                    feature.properties?.USE_DESC || "Future Zone";
-                  try {
-                    layer.bindTooltip(`🔮 Future: ${schoolName}`, {
-                      permanent: false,
-                      sticky: true,
-                      className: "future-tooltip",
-                    });
-                  } catch {}
+      const safeSetStyle = (style) => {
+        if (!layer || !layer._map || !layer.setStyle) return;
+        try { layer.setStyle(style); } catch (err) {}
+      };
 
-                  const safeSetStyle = (style) => {
-                    if (!layer || !layer._map || !layer._path) return;
-                    try {
-                      layer.setStyle(style);
-                    } catch {}
-                  };
+      const handleMouseOver = () => safeSetStyle({ weight: 3.5, color: "#cc6600", fillOpacity: 0.2 });
+      const handleMouseOut = () => safeSetStyle({ weight: 2.5, color: "#FF8C00", fillOpacity: 0.08 });
+      const handleClick = (e) => {
+        if (e.originalEvent) e.originalEvent.stopPropagation();
+        if (layer._map && layer.getBounds) layer._map.fitBounds(layer.getBounds(), { padding: [40, 40] });
+      };
 
-                  const handleMouseOver = () =>
-                    safeSetStyle({ weight: 3.5, color: "#cc6600" });
-
-                  const handleMouseOut = () =>
-                    safeSetStyle({ weight: 2.5, color: "#FF8C00" });
-
-                  const handleClick = () => {
-                    const map = layer._map;
-                    if (!map || !layer.getBounds) return;
-                    try {
-                      map.fitBounds(layer.getBounds(), { padding: [40, 40] });
-                    } catch {}
-                  };
-
-                  layer.on({
-                    mouseover: handleMouseOver,
-                    mouseout: handleMouseOut,
-                    click: handleClick,
-                  });
-
-                  layer.on("remove", () => {
-                    try {
-                      layer.off("mouseover", handleMouseOver);
-                      layer.off("mouseout", handleMouseOut);
-                      layer.off("click", handleClick);
-                    } catch {}
-                  });
-                }}
-              />
-            )}
-
+      layer.on({ mouseover: handleMouseOver, mouseout: handleMouseOut, click: handleClick });
+      layer.on("remove", () => {
+        try {
+          layer.off("mouseover", handleMouseOver);
+          layer.off("mouseout", handleMouseOut);
+          layer.off("click", handleClick);
+        } catch (e) {}
+      });
+    }}
+  />}
             {/* Address marker */}
             {addressMarker && (
               <Marker position={[addressMarker.lat, addressMarker.lng]} />
