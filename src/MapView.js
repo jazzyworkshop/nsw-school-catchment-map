@@ -1590,7 +1590,7 @@ function MapViewInner() {
               Local School Map
             </h1>
             <p style={styles.headerSub}>
-              NSW Public School Catchment Zones (Unofficial Tool)
+              NSW Public School Catchment Areas (Unofficial Tool)
             </p>
           </div>
           {isMobile && (
