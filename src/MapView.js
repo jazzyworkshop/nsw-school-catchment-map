@@ -874,7 +874,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
       : "No";
 
   const enrolmentDisplay = school.enrolment
-    ? Math.round(school.enrolment)
+    ? `${Math.round(school.enrolment).toLocaleString()} students`
     : "n/a";
 
   const cardStyle = isMobile
@@ -1926,7 +1926,7 @@ function MapViewInner() {
 
             {activeCatchment && (
               <GeoJSON
-                key={`active-${selectedSchool?.code || "none"}-${Date.now()}`} // Force re-mount
+                key={`active-${activeCatchment?.features?.[0]?.properties?.USE_ID || "none"}`}
                 data={activeCatchment}
                 style={{
                   color: "#1E88E5",
@@ -1936,19 +1936,32 @@ function MapViewInner() {
                 }}
                 onEachFeature={(feature, layer) => {
                   if (!layer) return;
+
+                  const handleMouseOver = () => {
+                    if (!layer || !layer._map || !layer._path) return;
+                    try {
+                      layer.setStyle({ weight: 4 });
+                    } catch {}
+                  };
+
+                  const handleMouseOut = () => {
+                    if (!layer || !layer._map || !layer._path) return;
+                    try {
+                      layer.setStyle({ weight: 3 });
+                    } catch {}
+                  };
+
                   layer.on({
-                    mouseover: () => {
-                      if (!layer || !layer._map || !layer._path) return;
-                      try {
-                        layer.setStyle({ weight: 4 });
-                      } catch {}
-                    },
-                    mouseout: () => {
-                      if (!layer || !layer._map || !layer._path) return;
-                      try {
-                        layer.setStyle({ weight: 3 });
-                      } catch {}
-                    },
+                    mouseover: handleMouseOver,
+                    mouseout: handleMouseOut,
+                  });
+
+                  // 🔥 CRITICAL: cleanup when layer is removed
+                  layer.on("remove", () => {
+                    try {
+                      layer.off("mouseover", handleMouseOver);
+                      layer.off("mouseout", handleMouseOut);
+                    } catch {}
                   });
                 }}
               />
