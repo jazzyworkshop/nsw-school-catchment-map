@@ -31,6 +31,15 @@ const isSecondaryCatchment = (f) => {
   );
 };
 
+// ADD THIS HELPER (place near top, under helpers)
+
+const normalizeCode = (val) => {
+  if (val === null || val === undefined) return null;
+  const num = parseInt(val, 10);
+  if (isNaN(num)) return null;
+  return String(num).padStart(4, "0");
+};
+
 /* ────────────────────────────────────────────────────────────────
    MAP ERROR BOUNDARY
    ──────────────────────────────────────────────────────────────── */
@@ -1153,22 +1162,25 @@ function MapViewInner() {
     if (!window._catchmentCache?.features) return {};
 
     const index = {};
+
     window._catchmentCache.features.forEach((feature) => {
       const props = feature.properties || {};
 
-      // Prioritize USE_ID as per your check
       const rawId = props.USE_ID || props.CATCH_CODE || props.SCHOOL_CODE;
 
-      if (rawId) {
-        const code = String(rawId).padStart(4, "0");
-        index[code] = feature;
-      }
+      if (!rawId) return;
+
+      const code = String(rawId).padStart(4, "0");
+
+      if (!index[code]) index[code] = [];
+      index[code].push(feature);
     });
 
     console.log(
-      "✓ Index sync'd with USE_ID. Sample keys:",
-      Object.keys(index).slice(0, 5),
+      "✓ Indexed catchments (multi-feature):",
+      Object.keys(index).length,
     );
+
     return index;
   }, [window._catchmentCache]);
 
@@ -1285,7 +1297,7 @@ function MapViewInner() {
 
       const { lat, lng } = e.latlng;
 
-      if (!primaryCatchmentFeature && !secondaryCatchmentFeature) return;
+      if (!activeCatchment) return;
 
       const insidePrimary = primaryCatchmentFeature
         ? pointInFeature(lat, lng, primaryCatchmentFeature)
@@ -1305,27 +1317,24 @@ function MapViewInner() {
   // School click → use index for instant catchment lookup
   const handleSchoolClick = useCallback(
     (school) => {
-      // Check all possible ID variations on the clicked dot
-      const rawCode = school.USE_ID || school.code || school.SCHOOL_CODE;
+      const rawCode = school.code;
 
       setSelectedSchool(school);
       setMapTarget([school.lat, school.lng]);
 
-      if (rawCode) {
-        const paddedCode = String(rawCode).padStart(4, "0");
-        const feature = catchmentIndex[paddedCode];
+      if (!rawCode) return;
 
-        if (feature) {
-          setActiveCatchment({
-            type: "FeatureCollection",
-            features: [feature],
-          });
-        } else {
-          setActiveCatchment(null);
-          console.warn(
-            `Code ${paddedCode} not found in index. Field used: USE_ID`,
-          );
-        }
+      const paddedCode = String(parseInt(rawCode, 10)).padStart(4, "0");
+      const features = catchmentIndex[paddedCode];
+
+      if (features && features.length > 0) {
+        setActiveCatchment({
+          type: "FeatureCollection",
+          features,
+        });
+      } else {
+        setActiveCatchment(null);
+        console.warn(`No catchments for code ${paddedCode}`);
       }
     },
     [catchmentIndex],
@@ -1395,9 +1404,12 @@ function MapViewInner() {
       setSelectedSchool(item);
 
       const paddedCode = String(parseInt(item.code, 10)).padStart(4, "0");
-      const feature = catchmentIndex[paddedCode];
-      if (feature) {
-        setActiveCatchment({ type: "FeatureCollection", features: [feature] });
+      const features = catchmentIndex[paddedCode];
+      if (features) {
+        setActiveCatchment({
+          type: "FeatureCollection",
+          features,
+        });
       }
 
       const typeLabel =
@@ -1463,36 +1475,39 @@ function MapViewInner() {
       setSecondaryCatchmentFeature(secondaryFeature || null);
 
       if (primaryFeature) {
-        const codeRaw = primaryFeature.properties?.USE_ID;
-        const paddedCode = String(parseInt(codeRaw, 10)).padStart(4, "0");
-        const primarySchool =
-          schools.find(
-            (s) => String(parseInt(s.code, 10)).padStart(4, "0") === paddedCode,
-          ) || null;
+        const code = normalizeCode(primaryFeature.properties?.USE_ID);
+
+        const features = (code && catchmentIndex[code]) || [primaryFeature];
 
         setActiveCatchment({
           type: "FeatureCollection",
-          features: [primaryFeature],
+          features,
         });
+
+        const primarySchool =
+          schools.find((s) => normalizeCode(s.code) === code) || null;
+
         if (primarySchool) {
           setSelectedSchool(primarySchool);
         }
       } else if (secondaryFeature) {
         // Fallback: if no primary but secondary exists
-        const codeRaw = secondaryFeature.properties?.USE_ID;
-        const paddedCode = String(parseInt(codeRaw, 10)).padStart(4, "0");
-        const secSchool =
-          schools.find(
-            (s) => String(parseInt(s.code, 10)).padStart(4, "0") === paddedCode,
-          ) || null;
+        const code = normalizeCode(secondaryFeature.properties?.USE_ID);
+
+        const features = (code && catchmentIndex[code]) || [secondaryFeature];
 
         setActiveCatchment({
           type: "FeatureCollection",
-          features: [secondaryFeature],
+          features,
         });
-        if (secSchool) {
-          setSelectedSchool(secSchool);
+
+        const secondarySchool =
+          schools.find((s) => normalizeCode(s.code) === code) || null;
+
+        if (secondarySchool) {
+          setSelectedSchool(secondarySchool);
         }
+
         setCatchmentView("secondary");
       }
 
@@ -1885,7 +1900,7 @@ function MapViewInner() {
 
             {activeCatchment && (
               <GeoJSON
-                key={`active-${activeCatchment?.features?.[0]?.properties?.CATCH_CODE}`} // Force re-mount
+                key={`active-${selectedSchool?.code || "none"}-${Date.now()}`} // Force re-mount
                 data={activeCatchment}
                 style={{
                   color: "#1E88E5",
