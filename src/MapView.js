@@ -289,6 +289,24 @@ const styles = {
     overflow: "hidden",
     fontSize: 11,
   },
+  loadingBadge: {
+    position: "absolute",
+    top: 68, // aligns under search bar (same as clear pill)
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: 2000,
+    background: "rgba(0, 43, 92, 0.92)",
+    color: "white",
+    padding: "6px 14px",
+    borderRadius: "20px",
+    fontSize: "12px",
+    fontWeight: 500,
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+    pointerEvents: "none", // 🔥 important: doesn't block clicks
+  },
   addressCatchmentButton: (active) => ({
     padding: "5px 10px",
     cursor: "pointer",
@@ -1132,28 +1150,29 @@ function MapViewInner() {
   const [secondaryCatchmentFeature, setSecondaryCatchmentFeature] =
     useState(null);
   const [catchmentView, setCatchmentView] = useState("primary"); // "primary" | "secondary"
+  const [catchmentsReady, setCatchmentsReady] = useState(false);
 
   // Preload catchments on app mount
   useEffect(() => {
     async function loadData() {
-      // If it's already loaded, don't fetch again
-      if (window._catchmentCache) return;
+      if (window._catchmentCache) {
+        setCatchmentsReady(true);
+        return;
+      }
 
       try {
         const res = await fetch("/catchments.geojson");
         const data = await res.json();
 
-        // Save to the global cache
         window._catchmentCache = data;
 
-        // Force a re-render so the useMemo below runs again
-        // We do this by updating a simple toggle or dummy state if needed,
-        // but usually, if this is at the top level, it will trigger correctly.
-        console.log("✓ Catchment data cached globally");
+        setCatchmentsReady(true); // ✅ mark ready
+        console.log("✓ Catchments ready");
       } catch (err) {
         console.error("Failed to load catchments:", err);
       }
     }
+
     loadData();
   }, []);
 
@@ -1317,27 +1336,31 @@ function MapViewInner() {
   // School click → use index for instant catchment lookup
   const handleSchoolClick = useCallback(
     (school) => {
-      const rawCode = school.code;
+      // 🔒 Prevent click if not ready
+      if (!catchmentsReady) {
+        console.warn("Catchments not ready yet");
+        return;
+      }
 
       setSelectedSchool(school);
       setMapTarget([school.lat, school.lng]);
 
-      if (!rawCode) return;
+      const code = normalizeCode(school.code);
+      if (!code) return;
 
-      const paddedCode = String(parseInt(rawCode, 10)).padStart(4, "0");
-      const features = catchmentIndex[paddedCode];
+      const features = catchmentIndex[code];
 
-      if (features && features.length > 0) {
+      if (features && features.length) {
         setActiveCatchment({
           type: "FeatureCollection",
           features,
         });
       } else {
         setActiveCatchment(null);
-        console.warn(`No catchments for code ${paddedCode}`);
+        console.warn("No catchment for school:", school.name, code);
       }
     },
-    [catchmentIndex],
+    [catchmentIndex, catchmentsReady],
   );
 
   // Address search (Nominatim)
@@ -1850,6 +1873,9 @@ function MapViewInner() {
                 Secondary catchment
               </button>
             </div>
+          )}
+          {!catchmentsReady && (
+            <div style={styles.loadingBadge}>⏳ Loading catchments…</div>
           )}
 
           {/* Filter warning / clear pill */}
