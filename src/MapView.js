@@ -15,6 +15,7 @@ import * as turf from "@turf/turf";
 /* ────────────────────────────────────────────────────────────────
    CATCHMENT TYPE HELPERS
    ──────────────────────────────────────────────────────────────── */
+const ENABLE_FUTURE_ZONES = false;
 const isPrimaryCatchment = (f) =>
   f?.properties?.CATCH_TYPE?.toLowerCase() === "primary";
 
@@ -651,14 +652,16 @@ function FilterContent({
             icon="⭐"
             tooltip="Filters to schools that run an Opportunity Class (OC) — selective primary classes for high-achieving students in Years 5 & 6."
           />
-          <ToggleRow
-            checked={showFuture}
-            onChange={setShowFuture}
-            label="Show future zone changes"
-            icon="🔮"
-            sublabel="Dashed orange boundaries"
-            tooltip="Shows planned catchment boundary changes that have been announced but not yet in effect. Only visible where a zone change is scheduled — most schools will show nothing extra."
-          />
+          {ENABLE_FUTURE_ZONES && (
+            <ToggleRow
+              checked={showFuture}
+              onChange={setShowFuture}
+              label="Show future zone changes"
+              icon="🔮"
+              sublabel="Dashed orange boundaries"
+              tooltip="Shows planned catchment boundary changes..."
+            />
+          )}
         </div>
 
         {/* Clear filters button */}
@@ -1238,7 +1241,7 @@ function MapViewInner() {
   }, []);
 
   useEffect(() => {
-    if (!showFuture || futureCatchments) return;
+    if (!ENABLE_FUTURE_ZONES || !showFuture || futureCatchments) return;
 
     async function loadFuture() {
       try {
@@ -1967,7 +1970,7 @@ function MapViewInner() {
               />
             )}
 
-            {showFuture && futureCatchments &&
+            {ENABLE_FUTURE_ZONES && showFuture && futureCatchments &&
               /* prettier-ignore */
               <GeoJSON
     key={"future-layer-" + showFuture + "-" + (futureCatchments?.features?.length || 0)}
