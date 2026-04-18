@@ -951,42 +951,30 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
   };
 
   const handleDomainSearch = () => {
-    console.log("Button clicked! School data:", school); // Check your console to see what 'school' actually looks like
-
     if (!school) return;
 
-    let suburbRaw = "";
-    let postcode = "";
+    // Now we can safely call school.suburb and school.postcode
+    // because we added them to the 'mapped' object above!
+    const cleanSuburb = String(school.suburb || "").trim();
+    const cleanPostcode = String(school.postcode || "").trim();
 
-    // 1. Detect if school is an Array or an Object and pull data accordingly
-    if (Array.isArray(school)) {
-      suburbRaw = school[4] || "";
-      postcode = school[5] || "";
-    } else {
-      // Try both lowercase and capitalized keys just in case
-      suburbRaw = school.Town_suburb || school.suburb || "";
-      postcode = school.Postcode || school.postcode || "";
-    }
-
-    if (!suburbRaw) {
-      console.error("Could not find suburb in school data.");
+    // Safety check
+    if (!cleanSuburb || !cleanPostcode) {
+      console.warn("Domain Search: Missing data", {
+        cleanSuburb,
+        cleanPostcode,
+      });
       return;
     }
 
-    // 2. Format the Suburb for the URL
-    const suburbSlug = suburbRaw
-      .toString()
+    // Format suburb for the URL (lowercase and dashes)
+    const suburbSlug = cleanSuburb
       .toLowerCase()
-      .trim()
       .replace(/\s+/g, "-")
       .replace(/[^a-z0-9-]/g, "");
 
-    // 3. Create the final URL
-    const url = postcode
-      ? `https://www.domain.com.au/suburb-profile/${suburbSlug}-nsw-${postcode}`
-      : `https://www.domain.com.au/suburb-profile/${suburbSlug}-nsw`;
+    const url = `https://www.domain.com.au/suburb-profile/${suburbSlug}-nsw-${cleanPostcode}`;
 
-    console.log("Opening URL:", url);
     window.open(url, "_blank");
   };
 
@@ -1333,6 +1321,7 @@ function MapViewInner() {
             name: row[2] || "Unknown",
             url: row[8] || "",
             suburb: row[4] || "",
+            postcode: row[5] || "",
             enrolment: row[10] || 0,
             level: row[14] || "Other",
             selective: row[15] || "No",
