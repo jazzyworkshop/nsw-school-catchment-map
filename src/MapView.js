@@ -13,6 +13,18 @@ import "leaflet/dist/leaflet.css";
 import * as turf from "@turf/turf";
 
 /* ────────────────────────────────────────────────────────────────
+   LEAFLET ICON FIX
+   ──────────────────────────────────────────────────────────────── */
+import icon from "leaflet/dist/images/marker-icon.png";
+import iconShadow from "leaflet/dist/images/marker-shadow.png";
+
+let DefaultIcon = L.icon({
+  iconUrl: icon,
+  shadowUrl: iconShadow,
+});
+L.Marker.prototype.options.icon = DefaultIcon;
+
+/* ────────────────────────────────────────────────────────────────
    CATCHMENT TYPE HELPERS
    ──────────────────────────────────────────────────────────────── */
 const ENABLE_FUTURE_ZONES = false;
@@ -20,25 +32,16 @@ const isPrimaryCatchment = (f) =>
   f?.properties?.CATCH_TYPE?.toLowerCase() === "primary";
 
 const isSecondaryCatchment = (f) => {
-  const type = (f?.properties?.CATCH_TYPE || "").toLowerCase();
-  const desc = (f?.properties?.USE_DESC || "").toLowerCase();
-  return (
-    type.includes("high") || // catches HIGH_COED, HIGH_BOYS, HIGH_GIRLS, HIGH
-    type.includes("secondary") ||
-    type.includes("central") ||
-    desc.includes("high") || // catches "Billabong HS", "XYZ High School"
-    desc.includes("secondary") || // catches "Secondary College", etc.
-    desc.includes("central")
-  );
+  const props = f?.properties || {};
+  const searchString = `${props.CATCH_TYPE} ${props.USE_DESC}`.toLowerCase();
+  const keywords = ["high", "secondary", "central"];
+
+  return keywords.some((word) => searchString.includes(word));
 };
 
-// ADD THIS HELPER (place near top, under helpers)
-
 const normalizeCode = (val) => {
-  if (val === null || val === undefined) return null;
   const num = parseInt(val, 10);
-  if (isNaN(num)) return null;
-  return String(num).padStart(4, "0");
+  return isNaN(num) ? null : String(num).padStart(4, "0");
 };
 
 /* ────────────────────────────────────────────────────────────────
@@ -84,19 +87,6 @@ class MapErrorBoundary extends React.Component {
 }
 
 /* ────────────────────────────────────────────────────────────────
-   LEAFLET ICON FIX
-   ──────────────────────────────────────────────────────────────── */
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
-  iconUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
-  shadowUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-});
-
-/* ────────────────────────────────────────────────────────────────
    ZOOM HANDLER
    ──────────────────────────────────────────────────────────────── */
 function ZoomHandler({ target }) {
@@ -134,7 +124,6 @@ const SELECTIVE_LABELS = {
 };
 
 const HEADER_HEIGHT = 56;
-
 /* ────────────────────────────────────────────────────────────────
    INLINE STYLES
    ──────────────────────────────────────────────────────────────── */
@@ -341,7 +330,17 @@ function FilterPanel({
   if (isMobile) {
     return (
       <>
-        {isOpen && <div style={styles.backdrop} onClick={onToggle} />}
+        {isOpen && (
+          <div
+            style={{
+              ...styles.backdrop,
+              opacity: isOpen ? 1 : 0,
+              pointerEvents: isOpen ? "auto" : "none",
+              transition: "opacity 0.28s ease",
+            }}
+            onClick={onToggle}
+          />
+        )}
         <div
           style={{
             position: "fixed",
@@ -366,6 +365,7 @@ function FilterPanel({
               justifyContent: "center",
               padding: "12px 0 4px",
               cursor: "pointer",
+              touchAction: "none",
             }}
           >
             <div
@@ -488,7 +488,10 @@ function FilterPanel({
 /* ────────────────────────────────────────────────────────────────
    FILTER CONTENT
    ──────────────────────────────────────────────────────────────── */
-function FilterContent({
+/* ────────────────────────────────────────────────────────────────
+   FILTER CONTENT (Memoized)
+   ──────────────────────────────────────────────────────────────── */
+const FilterContent = React.memo(function FilterContent({
   typeFilters,
   setTypeFilters,
   genderFilter,
@@ -650,7 +653,7 @@ function FilterContent({
             onChange={setOcFilter}
             label="Opportunity Classes only"
             icon="⭐"
-            tooltip="Filters to schools that run an Opportunity Class (OC) — selective primary classes for high-achieving students in Years 5 & 6."
+            tooltip="Filters to schools that run an Opportunity Class (OC)..."
           />
           {ENABLE_FUTURE_ZONES && (
             <ToggleRow
@@ -689,26 +692,22 @@ function FilterContent({
       </div>
     </div>
   );
-}
+});
 
 /* ────────────────────────────────────────────────────────────────
    SMALL UI HELPERS
    ──────────────────────────────────────────────────────────────── */
+const SECTION_LABEL_STYLE = {
+  fontSize: "11px",
+  fontWeight: 700,
+  color: "#888",
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  marginBottom: "8px",
+};
+
 function SectionLabel({ children }) {
-  return (
-    <div
-      style={{
-        fontSize: "11px",
-        fontWeight: 700,
-        color: "#888",
-        textTransform: "uppercase",
-        letterSpacing: "0.05em",
-        marginBottom: "8px",
-      }}
-    >
-      {children}
-    </div>
-  );
+  return <div style={SECTION_LABEL_STYLE}>{children}</div>;
 }
 
 function ToggleRow({ checked, onChange, label, icon, sublabel, tooltip }) {
@@ -842,39 +841,59 @@ function ToggleRow({ checked, onChange, label, icon, sublabel, tooltip }) {
 function SchoolInfoCard({ school, isMobile, onClose }) {
   if (!school) return null;
 
-  const selectiveInfo =
-    SELECTIVE_LABELS[school.selective] || SELECTIVE_LABELS[""];
-  const typeColor =
-    SCHOOL_COLORS[
-      Object.keys(SCHOOL_COLORS).find((k) => school.level.includes(k)) ||
-        "Other"
-    ] || "#888";
+  // 1. Determine the color for the SINGLE school being displayed
+  const level = school.level || "";
+  let typeColor;
 
+  if (level.includes("Primary")) {
+    typeColor = SCHOOL_COLORS.Primary;
+  } else if (level.includes("Secondary") || level.includes("High")) {
+    typeColor = SCHOOL_COLORS.Secondary;
+  } else if (level.includes("Central")) {
+    typeColor = SCHOOL_COLORS.Central;
+  } else {
+    typeColor = SCHOOL_COLORS.Other || "#888";
+  }
+
+  // 2. The rest of your URL logic follows naturally...
   const mySchoolUrl = `https://www.myschool.edu.au/search?schoolName=${encodeURIComponent(
     school.name,
   )}&suburb=${encodeURIComponent(school.suburb)}`;
+
+  const schoolWebsite = school.url
+    ? school.url.startsWith("http")
+      ? school.url
+      : `https://${school.url}`
+    : "#";
 
   const schoolFinderUrl = `https://schoolfinder.education.nsw.gov.au/index.php?schoolCode=${school.code}`;
 
   const betterEducationUrl =
     "https://bettereducation.com.au/school/secondary/nsw/sydney-high-school-rankings.aspx";
 
+  const genderDisplay =
+    {
+      Coed: "Co-ed",
+      Boys: "Boys",
+      Girls: "Girls",
+    }[school.gender] ||
+    school.gender ||
+    "n/a";
+
   const ocDisplay =
     school.oc && school.oc !== "N" ? "Yes (OC classes available)" : "n/a";
-
-  const genderDisplay =
-    school.gender === "Coed"
-      ? "Co-ed"
-      : school.gender === "Boys"
-        ? "Boys"
-        : school.gender === "Girls"
-          ? "Girls"
-          : school.gender || "n/a";
 
   const selectiveDisplay =
     school.selective && school.selective !== "No" && school.selective !== ""
       ? school.selective
       : "No";
+
+  // This replaces the manual selectiveInfo object
+  const selectiveInfo = SELECTIVE_LABELS[selectiveDisplay] || {
+    label: selectiveDisplay,
+    color: "#666",
+    bg: "transparent",
+  };
 
   const enrolmentDisplay = school.enrolment
     ? `${Math.round(school.enrolment).toLocaleString()} students`
@@ -891,6 +910,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
         borderRadius: "16px 16px 0 0",
         boxShadow: "0 -4px 24px rgba(0,0,0,0.18)",
         padding: "0 0 24px 0",
+        willChange: "transform",
         animation: "slideUp 0.25s ease-out",
         maxHeight: "70vh",
         overflowY: "auto",
@@ -906,6 +926,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
         boxShadow: "-4px 0 20px rgba(0,0,0,0.12)",
         overflowY: "auto",
         animation: "slideInRight 0.25s ease-out",
+        willChange: "transform",
       };
 
   const infoRowStyle = {
@@ -929,8 +950,50 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
     fontWeight: 500,
   };
 
+  const handleDomainSearch = () => {
+    if (!school) return;
+
+    // Now we can safely call school.suburb and school.postcode
+    // because we added them to the 'mapped' object above!
+    const cleanSuburb = String(school.suburb || "").trim();
+    const cleanPostcode = String(school.postcode || "").trim();
+
+    // Safety check
+    if (!cleanSuburb || !cleanPostcode) {
+      console.warn("Domain Search: Missing data", {
+        cleanSuburb,
+        cleanPostcode,
+      });
+      return;
+    }
+
+    // Format suburb for the URL (lowercase and dashes)
+    const suburbSlug = cleanSuburb
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "");
+
+    const url = `https://www.domain.com.au/suburb-profile/${suburbSlug}-nsw-${cleanPostcode}`;
+
+    window.open(url, "_blank");
+  };
+
   return (
     <>
+      {/* 1. Inject the Keyframes */}
+      <style>
+        {`
+        @keyframes slideUp {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+        @keyframes slideInRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+      `}
+      </style>
+
       {isMobile && <div style={styles.backdrop} onClick={onClose} />}
       <div style={cardStyle}>
         {isMobile && (
@@ -965,13 +1028,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
         >
           <div style={{ flex: 1 }}>
             <a
-              href={
-                school.url
-                  ? school.url.includes("http")
-                    ? school.url
-                    : `https://${school.url}`
-                  : "#"
-              }
+              href={schoolWebsite} // <--- Much cleaner!
               target="_blank"
               rel="noopener noreferrer"
               style={{
@@ -1037,8 +1094,17 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
 
           <div style={infoRowStyle}>
             <span style={labelStyle}>Selective</span>
-            <span style={valueStyle}>
-              {selectiveInfo.label || selectiveDisplay}
+            <span
+              style={{
+                ...valueStyle,
+                color: selectiveInfo.color,
+                backgroundColor: selectiveInfo.bg,
+                padding: selectiveInfo.bg !== "transparent" ? "2px 8px" : "0",
+                borderRadius: "4px",
+                display: "inline-block",
+              }}
+            >
+              {selectiveInfo.label}
             </span>
           </div>
 
@@ -1085,6 +1151,39 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
             </span>
           </div>
 
+          <button
+            onClick={handleDomainSearch}
+            className="domain-search-btn"
+            style={{
+              marginTop: "12px",
+              backgroundColor: "#009a44", // Domain Green
+              color: "white",
+              padding: "12px 16px",
+              borderRadius: "8px",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: "600",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              width: "100%",
+              transition: "background-color 0.2s",
+              boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+            }}
+            onMouseOver={(e) =>
+              (e.currentTarget.style.backgroundColor = "#007a36")
+            }
+            onMouseOut={(e) =>
+              (e.currentTarget.style.backgroundColor = "#009a44")
+            }
+          >
+            <span role="img" aria-label="suburb-map">
+              📊
+            </span>
+            {school.suburb} Suburb Profile & Rentals
+          </button>
+
           <div style={infoRowStyle}>
             <span style={labelStyle}>
               Verify data on the official School Finder website
@@ -1126,11 +1225,13 @@ function pointInFeature(lat, lng, feature) {
 function MapViewInner() {
   const [schools, setSchools] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedSchool, setSelectedSchool] = useState(null);
   const [activeCatchment, setActiveCatchment] = useState(null);
+
   const [futureCatchments, setFutureCatchments] = useState(null);
   const [mapTarget, setMapTarget] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedSchool, setSelectedSchool] = useState(null);
+
   const [searchForcedSchool, setSearchForcedSchool] = useState(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [showResults, setShowResults] = useState(false);
@@ -1220,6 +1321,7 @@ function MapViewInner() {
             name: row[2] || "Unknown",
             url: row[8] || "",
             suburb: row[4] || "",
+            postcode: row[5] || "",
             enrolment: row[10] || 0,
             level: row[14] || "Other",
             selective: row[15] || "No",
@@ -1640,23 +1742,20 @@ function MapViewInner() {
           to { transform: translateX(0); }
         }
         .search-item:hover { background: #f5f7ff !important; }
+        
+        /* Smooth tooltip for map markers */
         .school-hover-tooltip {
-          background: rgba(0, 0, 0, 0.78) !important;
+          background: rgba(0, 0, 0, 0.85) !important;
           color: white !important;
           border: none !important;
-          border-radius: 7px !important;
+          border-radius: 6px !important;
           font-size: 12px !important;
           font-weight: 600 !important;
-          padding: 4px 9px !important;
-          white-space: nowrap !important;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.25) !important;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
-        }
-        .school-hover-tooltip::before {
-          border-top-color: rgba(0, 0, 0, 0.78) !important;
+          padding: 6px 10px !important;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
         }
       `}</style>
-      <div style={styles.appShell}>
+      <div style={{ ...styles.appShell, willChange: "transform" }}>
         {/* HEADER */}
         <header style={styles.header}>
           <div
@@ -1682,10 +1781,7 @@ function MapViewInner() {
               <img
                 src="/logo_main.png"
                 alt="Logo"
-                style={{
-                  height: isMobile ? "28px" : "34px",
-                  width: "auto",
-                }}
+                style={{ height: isMobile ? "28px" : "34px", width: "auto" }}
               />
               Local School Map
             </h1>
@@ -1703,18 +1799,17 @@ function MapViewInner() {
             </button>
           )}
         </header>
-
         {/* MAP AREA */}
         <div style={styles.mapArea}>
-          {/* Search bar */}
+          {/* Search bar wrapper with dynamic positioning */}
           <div
             style={{
               ...styles.searchWrap,
               maxWidth: !isMobile && selectedSchool ? "380px" : "420px",
               left: !isMobile && selectedSchool ? "calc(50% - 150px)" : "50%",
+              transition: "all 0.3s ease-in-out", // Smooth move when sidebar opens
             }}
           >
-            {/* Unified search bar */}
             <div style={styles.searchInner}>
               <input
                 type="text"
@@ -1736,25 +1831,12 @@ function MapViewInner() {
               )}
             </div>
 
-            {/* Unified dropdown */}
+            {/* Dropdown Logic */}
             {showResults && (combinedResults.length > 0 || addressLoading) && (
               <ul style={styles.searchDropdown}>
-                {/* Schools & Suburbs header */}
                 {schoolResults.length > 0 && (
-                  <li
-                    style={{
-                      padding: "6px 10px",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: "#666",
-                      background: "#f7f7f7",
-                    }}
-                  >
-                    Schools & Suburbs
-                  </li>
+                  <li style={styles.dropdownHeader}>Schools & Suburbs</li>
                 )}
-
-                {/* School + suburb results */}
                 {schoolResults.map((item, i) => (
                   <li
                     key={`school-${i}`}
@@ -1766,30 +1848,14 @@ function MapViewInner() {
                   </li>
                 ))}
 
-                {/* Address header */}
                 {addressResults.length > 0 && (
-                  <li
-                    style={{
-                      padding: "6px 10px",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: "#666",
-                      background: "#f7f7f7",
-                      marginTop: "4px",
-                    }}
-                  >
-                    Addresses
-                  </li>
+                  <li style={styles.dropdownHeader}>Addresses</li>
                 )}
-
-                {/* Address loading */}
                 {addressLoading && (
                   <li style={{ ...styles.searchItem, color: "#777" }}>
                     Searching addresses...
                   </li>
                 )}
-
-                {/* Address results */}
                 {!addressLoading &&
                   addressResults.map((item, i) => (
                     <li
@@ -2086,14 +2152,17 @@ function MapViewInner() {
             })}
           </MapContainer>
 
-          <SchoolInfoCard
-            school={selectedSchool}
-            isMobile={isMobile}
-            onClose={() => setSelectedSchool(null)}
-          />
-        </div>
-
-        {/* FOOTER */}
+          {/* Side Card */}
+          {selectedSchool && (
+            <SchoolInfoCard
+              school={selectedSchool}
+              isMobile={isMobile}
+              onClose={() => setSelectedSchool(null)}
+            />
+          )}
+        </div>{" "}
+        {/* Closes mapArea */}
+        {/* FOOTER - Moved inside the appShell div */}
         <footer style={styles.footer}>
           <strong>Disclaimer:</strong> Unofficial tool. Not affiliated with NSW
           Dept of Education.{" "}
@@ -2103,9 +2172,9 @@ function MapViewInner() {
           </strong>{" "}
           Data: NSW Dept of Education Open Data (April 2026).
         </footer>
-      </div>
-
-      {/* Filter panel */}
+      </div>{" "}
+      {/* Closes appShell */}
+      {/* Filter Panel - Inside the main fragment, but outside appShell */}
       <FilterPanel
         isMobile={isMobile}
         isOpen={filterOpen}
