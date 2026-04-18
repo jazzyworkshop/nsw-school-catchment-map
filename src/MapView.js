@@ -11,6 +11,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import * as turf from "@turf/turf";
+import * as topojson from "topojson-client";
 
 /* ────────────────────────────────────────────────────────────────
    LEAFLET ICON FIX
@@ -1259,19 +1260,27 @@ function MapViewInner() {
   // Preload catchments on app mount
   useEffect(() => {
     async function loadData() {
+      // 1. Check if we already have the decoded GeoJSON in cache
       if (window._catchmentCache) {
         setCatchmentsReady(true);
         return;
       }
 
       try {
-        const res = await fetch("/catchments.geojson");
-        const data = await res.json();
+        // 2. Fetch the new TopoJSON file
+        const res = await fetch("/catchments.json");
+        const topology = await res.json();
 
-        window._catchmentCache = data;
+        // 3. Convert TopoJSON to GeoJSON
+        // Note: 'catchments' is the default key, but we'll use the first available object
+        const objectKey = Object.keys(topology.objects)[0];
+        const geoData = topojson.feature(topology, topology.objects[objectKey]);
 
-        setCatchmentsReady(true); // ✅ mark ready
-        console.log("✓ Catchments ready");
+        // 4. Save the DECODED GeoJSON to your cache
+        window._catchmentCache = geoData;
+
+        setCatchmentsReady(true);
+        console.log(`✓ Catchments ready (Decoded from ${objectKey})`);
       } catch (err) {
         console.error("Failed to load catchments:", err);
       }
