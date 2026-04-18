@@ -1305,7 +1305,7 @@ function MapViewInner() {
     );
 
     return index;
-  }, [window._catchmentCache]);
+  }, []);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -1435,7 +1435,7 @@ function MapViewInner() {
 
       handleClearAll();
     },
-    [primaryCatchmentFeature, secondaryCatchmentFeature],
+    [primaryCatchmentFeature, secondaryCatchmentFeature, activeCatchment],
   );
 
   // School click → use index for instant catchment lookup
