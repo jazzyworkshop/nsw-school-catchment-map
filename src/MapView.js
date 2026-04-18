@@ -1240,7 +1240,7 @@ function MapViewInner() {
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" ? window.innerWidth < 768 : false,
   );
-
+  const [catchmentIndex, setCatchmentIndex] = useState({});
   const [typeFilters, setTypeFilters] = useState(Object.keys(SCHOOL_COLORS));
   const [genderFilter, setGenderFilter] = useState("All");
   const [ocFilter, setOcFilter] = useState(false);
@@ -1262,59 +1262,83 @@ function MapViewInner() {
     async function loadData() {
       // 1. Check if we already have the decoded GeoJSON in cache
       if (window._catchmentCache) {
+        if (Object.keys(catchmentIndex).length === 0) {
+          const cachedIndex = {};
+          window._catchmentCache.features.forEach((feature) => {
+            const props = feature.properties || {};
+            // Check every possible ID key from your previous logic
+            const rawId =
+              props.school_code ||
+              props.C_CODE ||
+              props.USE_ID ||
+              props.CATCH_CODE ||
+              props.SCHOOL_CODE;
+
+            const featCode = normalizeCode(rawId || "");
+
+            if (featCode) {
+              if (!cachedIndex[featCode]) cachedIndex[featCode] = [];
+              cachedIndex[featCode].push(feature);
+            }
+          });
+          setCatchmentIndex(cachedIndex);
+        }
         setCatchmentsReady(true);
         return;
       }
 
       try {
-        // 2. Fetch the new TopoJSON file
         const res = await fetch("/catchments.json");
         const topology = await res.json();
 
-        // 3. Convert TopoJSON to GeoJSON
-        // Note: 'catchments' is the default key, but we'll use the first available object
+        // Grab the first object available in the TopoJSON
         const objectKey = Object.keys(topology.objects)[0];
         const geoData = topojson.feature(topology, topology.objects[objectKey]);
 
-        // 4. Save the DECODED GeoJSON to your cache
-        window._catchmentCache = geoData;
+        // 2. Build the Catchment Index for O(1) lookup
+        const newIndex = {};
+        geoData.features.forEach((feature) => {
+          const props = feature.properties || {};
+          // Comprehensive check for ID keys
+          const rawId =
+            props.school_code ||
+            props.C_CODE ||
+            props.USE_ID ||
+            props.CATCH_CODE ||
+            props.SCHOOL_CODE;
 
+          const featCode = normalizeCode(rawId || "");
+
+          if (featCode) {
+            if (!newIndex[featCode]) newIndex[featCode] = [];
+            newIndex[featCode].push(feature);
+          }
+        });
+
+        // 3. Update States and Global Cache
+        setCatchmentIndex(newIndex);
+        window._catchmentCache = geoData;
         setCatchmentsReady(true);
-        console.log(`✓ Catchments ready (Decoded from ${objectKey})`);
+
+        console.log(
+          `✓ Catchments ready. Indexed ${Object.keys(newIndex).length} schools.`,
+        );
+
+        // Final sanity check for your console
+        if (geoData.features.length > 0) {
+          console.log(
+            "Sample Feature Properties:",
+            geoData.features[0].properties,
+          );
+        }
       } catch (err) {
-        console.error("Failed to load catchments:", err);
+        console.error("Catchment Load Error:", err);
       }
     }
 
     loadData();
-  }, []);
-
-  // O(1) lookup index for catchments
-  const catchmentIndex = useMemo(() => {
-    if (!window._catchmentCache?.features) return {};
-
-    const index = {};
-
-    window._catchmentCache.features.forEach((feature) => {
-      const props = feature.properties || {};
-
-      const rawId = props.USE_ID || props.CATCH_CODE || props.SCHOOL_CODE;
-
-      if (!rawId) return;
-
-      const code = String(rawId).padStart(4, "0");
-
-      if (!index[code]) index[code] = [];
-      index[code].push(feature);
-    });
-
-    console.log(
-      "✓ Indexed catchments (multi-feature):",
-      Object.keys(index).length,
-    );
-
-    return index;
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount. normalizeCode is usually a helper function that doesn't change.
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -1358,7 +1382,7 @@ function MapViewInner() {
       try {
         // Use the existing cache if available, otherwise fetch
         if (!window._catchmentCache) {
-          const res = await fetch("/catchments.geojson");
+          const res = await fetch("/catchments.json");
           window._catchmentCache = await res.json();
         }
 
@@ -1372,7 +1396,6 @@ function MapViewInner() {
           // 2. Filter for catchments active between 2027 and 2032
           const isFutureYear = yearValue >= 2027 && yearValue <= 2032;
 
-          // 3. Ensure it has a valid catchment type (Primary, High, etc.)
           const hasValidType = !!props.CATCH_TYPE;
 
           return isFutureYear && hasValidType;
@@ -1397,8 +1420,26 @@ function MapViewInner() {
 
   const ensureCatchmentCache = useCallback(async () => {
     if (!window._catchmentCache) {
-      const res = await fetch("/catchments.geojson");
-      window._catchmentCache = await res.json();
+      try {
+        const res = await fetch("/catchments.json");
+        const topology = await res.json();
+
+        const objectKey = Object.keys(topology.objects)[0];
+        const geoData = topojson.feature(topology, topology.objects[objectKey]);
+
+        window._catchmentCache = geoData;
+        console.log(
+          `✓ Catchment cache initialized from TopoJSON (${objectKey})`,
+        );
+        console.log(
+          "Sample Catchment Properties:",
+          window._catchmentCache.features[0].properties,
+        );
+        console.log("Selected School Code:", selectedSchool.code);
+      } catch (err) {
+        console.error("Failed to initialize catchment cache:", err);
+        return null;
+      }
     }
     return window._catchmentCache;
   }, []);
@@ -1455,7 +1496,7 @@ function MapViewInner() {
         console.warn("Catchments not ready yet");
         return;
       }
-
+      console.log("Current Index Keys:", Object.keys(catchmentIndex));
       setSelectedSchool(school);
       setMapTarget([school.lat, school.lng]);
 
