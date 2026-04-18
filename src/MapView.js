@@ -12,6 +12,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import * as turf from "@turf/turf";
 import * as topojson from "topojson-client";
+import Fuse from "fuse.js";
 
 /* ────────────────────────────────────────────────────────────────
    LEAFLET ICON FIX
@@ -1701,20 +1702,53 @@ function MapViewInner() {
   };
 
   // Local school + suburb results
+  // 1. Setup Fuse instances (memoized for performance)
+  const fuseSchools = useMemo(
+    () =>
+      new Fuse(schools, {
+        keys: ["name"],
+        threshold: 0.35,
+        distance: 100,
+        minMatchCharLength: 2,
+      }),
+    [schools],
+  );
+
+  const fuseSuburbs = useMemo(() => {
+    const uniqueSuburbs = [...new Set(schools.map((s) => s.suburb))].map(
+      (sub) => ({ name: sub }),
+    );
+    return new Fuse(uniqueSuburbs, {
+      keys: ["name"],
+      threshold: 0.3,
+      minMatchCharLength: 2,
+    });
+  }, [schools]);
+
+  // 2. Fuzzy Search Logic (The replacement for schoolResults)
   const schoolResults = useMemo(() => {
     if (searchTerm.length < 2) return [];
-    const lower = searchTerm.toLowerCase();
 
-    const suburbs = [...new Set(schools.map((s) => s.suburb))]
-      .filter((sub) => sub.toLowerCase().includes(lower))
-      .map((sub) => ({ type: "suburb", name: sub, label: `🏠 ${sub}` }));
+    const suburbMatches = fuseSuburbs
+      .search(searchTerm)
+      .slice(0, 5)
+      .map((result) => ({
+        type: "suburb",
+        name: result.item.name,
+        label: `🏠 ${result.item.name}`,
+      }));
 
-    const schoolMatches = schools
-      .filter((s) => s.name.toLowerCase().includes(lower))
-      .map((s) => ({ ...s, type: "school", label: `🎓 ${s.name}` }));
+    const schoolMatches = fuseSchools
+      .search(searchTerm)
+      .slice(0, 10)
+      .map((result) => ({
+        ...result.item,
+        type: "school",
+        label: `🎓 ${result.item.name}`,
+      }));
 
-    return [...suburbs, ...schoolMatches];
-  }, [searchTerm, schools]);
+    return [...suburbMatches, ...schoolMatches];
+  }, [searchTerm, fuseSchools, fuseSuburbs]);
 
   const combinedResults = [...schoolResults, ...addressResults];
 
