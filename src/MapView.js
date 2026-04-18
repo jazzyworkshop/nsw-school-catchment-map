@@ -1429,14 +1429,9 @@ function MapViewInner() {
         const geoData = topojson.feature(topology, topology.objects[objectKey]);
 
         window._catchmentCache = geoData;
-        console.log(
-          `✓ Catchment cache initialized from TopoJSON (${objectKey})`,
-        );
-        console.log(
-          "Sample Catchment Properties:",
-          window._catchmentCache.features[0].properties,
-        );
-        console.log("Selected School Code:", selectedSchool.code);
+
+        console.log(`✓ Catchment cache initialized (${objectKey})`);
+        console.log("Sample Properties:", geoData.features[0].properties);
       } catch (err) {
         console.error("Failed to initialize catchment cache:", err);
         return null;
