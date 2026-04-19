@@ -843,93 +843,75 @@ function ToggleRow({ checked, onChange, label, icon, sublabel, tooltip }) {
 function SchoolInfoCard({ school, isMobile, onClose }) {
   if (!school) return null;
 
-  // 1. Determine the color for the SINGLE school being displayed
+  // 1. Color and Data Logic (Shared)
   const level = school.level || "";
   let typeColor;
-
-  if (level.includes("Primary")) {
-    typeColor = SCHOOL_COLORS.Primary;
-  } else if (level.includes("Secondary") || level.includes("High")) {
+  if (level.includes("Primary")) typeColor = SCHOOL_COLORS.Primary;
+  else if (level.includes("Secondary") || level.includes("High"))
     typeColor = SCHOOL_COLORS.Secondary;
-  } else if (level.includes("Central")) {
-    typeColor = SCHOOL_COLORS.Central;
-  } else {
-    typeColor = SCHOOL_COLORS.Other || "#888";
-  }
+  else if (level.includes("Central")) typeColor = SCHOOL_COLORS.Central;
+  else typeColor = SCHOOL_COLORS.Other || "#888";
 
-  // 2. The rest of your URL logic follows naturally...
-  const mySchoolUrl = `https://www.myschool.edu.au/search?schoolName=${encodeURIComponent(
-    school.name,
-  )}&suburb=${encodeURIComponent(school.suburb)}`;
-
+  const mySchoolUrl = `https://www.myschool.edu.au/search?schoolName=${encodeURIComponent(school.name)}&suburb=${encodeURIComponent(school.suburb)}`;
   const schoolWebsite = school.url
     ? school.url.startsWith("http")
       ? school.url
       : `https://${school.url}`
     : "#";
-
   const schoolFinderUrl = `https://schoolfinder.education.nsw.gov.au/index.php?schoolCode=${school.code}`;
-
   const betterEducationUrl =
     "https://bettereducation.com.au/school/secondary/nsw/sydney-high-school-rankings.aspx";
 
   const genderDisplay =
-    {
-      Coed: "Co-ed",
-      Boys: "Boys",
-      Girls: "Girls",
-    }[school.gender] ||
+    { Coed: "Co-ed", Boys: "Boys", Girls: "Girls" }[school.gender] ||
     school.gender ||
     "n/a";
-
   const ocDisplay =
     school.oc && school.oc !== "N" ? "Yes (OC classes available)" : "n/a";
-
   const selectiveDisplay =
-    school.selective && school.selective !== "No" && school.selective !== ""
+    school.selective && !["No", ""].includes(school.selective)
       ? school.selective
       : "No";
-
-  // This replaces the manual selectiveInfo object
   const selectiveInfo = SELECTIVE_LABELS[selectiveDisplay] || {
     label: selectiveDisplay,
     color: "#666",
     bg: "transparent",
   };
-
   const enrolmentDisplay = school.enrolment
     ? `${Math.round(school.enrolment).toLocaleString()} students`
     : "n/a";
 
-  const cardStyle = isMobile
-    ? {
-        position: "fixed",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        background: "white",
-        zIndex: 4800,
-        borderRadius: "16px 16px 0 0",
-        boxShadow: "0 -4px 24px rgba(0,0,0,0.18)",
-        padding: "0 0 24px 0",
-        willChange: "transform",
-        animation: "slideUp 0.25s ease-out",
-        maxHeight: "70vh",
-        overflowY: "auto",
-      }
-    : {
-        position: "absolute",
-        top: 0,
-        right: 0,
-        bottom: 0,
-        width: "300px",
-        background: "white",
-        zIndex: 2500,
-        boxShadow: "-4px 0 20px rgba(0,0,0,0.12)",
-        overflowY: "auto",
-        animation: "slideInRight 0.25s ease-out",
-        willChange: "transform",
-      };
+  // --- 2. Styles (Strict Branching) ---
+
+  const desktopStyle = {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: "300px",
+    background: "white",
+    zIndex: 2500,
+    boxShadow: "-4px 0 20px rgba(0,0,0,0.12)",
+    overflowY: "auto",
+    animation: "slideInRight 0.25s ease-out",
+    willChange: "transform",
+  };
+
+  const mobileStyle = {
+    position: "fixed",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    background: "white",
+    zIndex: 4800,
+    borderRadius: "16px 16px 0 0",
+    boxShadow: "0 -4px 24px rgba(0,0,0,0.18)",
+    maxHeight: "35vh", // Peeking height
+    overflowY: "auto",
+    animation: "slideUp 0.25s ease-out",
+    willChange: "transform",
+    pointerEvents: "auto", // Ensure user can still click card buttons
+  };
 
   const infoRowStyle = {
     display: "flex",
@@ -941,63 +923,47 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
   const labelStyle = {
     fontSize: "11px",
     textTransform: "uppercase",
-    letterSpacing: "0.06em",
     color: "#888",
     marginBottom: 3,
   };
-
-  const valueStyle = {
-    fontSize: "13px",
-    color: "#222",
-    fontWeight: 500,
-  };
+  const valueStyle = { fontSize: "13px", color: "#222", fontWeight: 500 };
 
   const handleDomainSearch = () => {
-    if (!school) return;
-
-    // Now we can safely call school.suburb and school.postcode
-    // because we added them to the 'mapped' object above!
-    const cleanSuburb = String(school.suburb || "").trim();
-    const cleanPostcode = String(school.postcode || "").trim();
-
-    // Safety check
-    if (!cleanSuburb || !cleanPostcode) {
-      console.warn("Domain Search: Missing data", {
-        cleanSuburb,
-        cleanPostcode,
-      });
-      return;
-    }
-
-    // Format suburb for the URL (lowercase and dashes)
-    const suburbSlug = cleanSuburb
+    const suburbSlug = String(school.suburb || "")
+      .trim()
       .toLowerCase()
-      .replace(/\s+/g, "-")
-      .replace(/[^a-z0-9-]/g, "");
-
-    const url = `https://www.domain.com.au/suburb-profile/${suburbSlug}-nsw-${cleanPostcode}`;
-
+      .replace(/\s+/g, "-");
+    const url = `https://www.domain.com.au/suburb-profile/${suburbSlug}-nsw-${school.postcode}`;
     window.open(url, "_blank");
   };
 
   return (
     <>
-      {/* 1. Inject the Keyframes */}
       <style>
         {`
-        @keyframes slideUp {
-          from { transform: translateY(100%); }
-          to { transform: translateY(0); }
-        }
-        @keyframes slideInRight {
-          from { transform: translateX(100%); }
-          to { transform: translateX(0); }
-        }
-      `}
+          @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+          @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        `}
       </style>
 
-      {isMobile && <div style={styles.backdrop} onClick={onClose} />}
-      <div style={cardStyle}>
+      {/* Mobile Backdrop: pointer-events: none allows map movement "through" the backdrop area */}
+      {isMobile && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 4700,
+            pointerEvents: "none",
+          }}
+          onClick={onClose}
+        />
+      )}
+
+      <div style={isMobile ? mobileStyle : desktopStyle}>
+        {/* Mobile Pull Tab */}
         {isMobile && (
           <div
             style={{
@@ -1017,7 +983,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
           </div>
         )}
 
-        {/* Header */}
+        {/* Header (Original Desktop Logic) */}
         <div
           style={{
             borderTop: `4px solid ${typeColor}`,
@@ -1030,7 +996,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
         >
           <div style={{ flex: 1 }}>
             <a
-              href={schoolWebsite} // <--- Much cleaner!
+              href={schoolWebsite}
               target="_blank"
               rel="noopener noreferrer"
               style={{
@@ -1048,7 +1014,6 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
               {school.suburb}
             </div>
           </div>
-
           <button
             onClick={onClose}
             style={{
@@ -1057,7 +1022,6 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
               fontSize: "18px",
               cursor: "pointer",
               color: "#bbb",
-              flexShrink: 0,
               padding: 0,
             }}
           >
@@ -1065,7 +1029,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
           </button>
         </div>
 
-        {/* Info list */}
+        {/* Content Body (Reverted to your original format) */}
         <div style={{ paddingTop: 6 }}>
           <div style={infoRowStyle}>
             <span style={labelStyle}>School type</span>
@@ -1153,43 +1117,31 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
             </span>
           </div>
 
-          <button
-            onClick={handleDomainSearch}
-            className="domain-search-btn"
-            style={{
-              marginTop: "12px",
-              backgroundColor: "#009a44", // Domain Green
-              color: "white",
-              padding: "12px 16px",
-              borderRadius: "8px",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: "600",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "10px",
-              width: "100%",
-              transition: "background-color 0.2s",
-              boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-            }}
-            onMouseOver={(e) =>
-              (e.currentTarget.style.backgroundColor = "#007a36")
-            }
-            onMouseOut={(e) =>
-              (e.currentTarget.style.backgroundColor = "#009a44")
-            }
-          >
-            <span role="img" aria-label="suburb-map">
-              📊
-            </span>
-            {school.suburb} Suburb Profile & Rentals
-          </button>
+          {/* Domain Button */}
+          <div style={{ padding: "12px 18px" }}>
+            <button
+              onClick={handleDomainSearch}
+              style={{
+                backgroundColor: "#009a44",
+                color: "white",
+                padding: "12px 16px",
+                borderRadius: "8px",
+                border: "none",
+                cursor: "pointer",
+                fontWeight: "600",
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "10px",
+              }}
+            >
+              📊 {school.suburb} Suburb Profile & Rentals
+            </button>
+          </div>
 
           <div style={infoRowStyle}>
-            <span style={labelStyle}>
-              Verify data on the official School Finder website
-            </span>
+            <span style={labelStyle}>Verify data on official website</span>
             <span style={valueStyle}>
               <a
                 href={schoolFinderUrl}
@@ -1487,21 +1439,31 @@ function MapViewInner() {
   // School click → use index for instant catchment lookup
   const handleSchoolClick = useCallback(
     (school) => {
-      // 🔒 Prevent click if not ready
+      // 1. Position the Map
+      if (isMobile) {
+        // Offset the latitude slightly so the school moves to the top half of the screen
+        // to stay clear of the info card at the bottom.
+        const mobileLat = school.lat + 0.005;
+        setMapTarget([mobileLat, school.lng]);
+      } else {
+        setMapTarget([school.lat, school.lng]);
+      }
+
+      // 2. Set the School
+      setSelectedSchool(school);
+
+      // 3. Catchment Logic
       if (!catchmentsReady) {
         console.warn("Catchments not ready yet");
         return;
       }
-      console.log("Current Index Keys:", Object.keys(catchmentIndex));
-      setSelectedSchool(school);
-      setMapTarget([school.lat, school.lng]);
 
       const code = normalizeCode(school.code);
       if (!code) return;
 
       const features = catchmentIndex[code];
 
-      if (features && features.length) {
+      if (features && features.length > 0) {
         setActiveCatchment({
           type: "FeatureCollection",
           features,
@@ -1511,7 +1473,7 @@ function MapViewInner() {
         console.warn("No catchment for school:", school.name, code);
       }
     },
-    [catchmentIndex, catchmentsReady],
+    [catchmentIndex, catchmentsReady, isMobile], // Added isMobile to dependencies
   );
 
   // Address search (Nominatim)
