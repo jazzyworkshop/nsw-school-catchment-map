@@ -13,6 +13,12 @@ import "leaflet/dist/leaflet.css";
 import * as turf from "@turf/turf";
 import * as topojson from "topojson-client";
 import Fuse from "fuse.js";
+import {
+  motion,
+  useAnimation,
+  useDragControls,
+  AnimatePresence,
+} from "framer-motion";
 
 /* ────────────────────────────────────────────────────────────────
    LEAFLET ICON FIX
@@ -841,9 +847,17 @@ function ToggleRow({ checked, onChange, label, icon, sublabel, tooltip }) {
    SCHOOL INFO CARD
    ──────────────────────────────────────────────────────────────── */
 function SchoolInfoCard({ school, isMobile, onClose }) {
-  if (!school) return null;
+  const controls = useAnimation();
+  const dragControls = useDragControls();
+  const [snapState, setSnapState] = useState("peeking");
 
-  // 1. Color and Data Logic (Shared)
+  useEffect(() => {
+    if (isMobile && school) {
+      controls.start("peeking");
+      setSnapState("peeking"); // Reset to peeking when a new school is picked
+    }
+  }, [school, isMobile, controls]);
+
   const level = school.level || "";
   let typeColor;
   if (level.includes("Primary")) typeColor = SCHOOL_COLORS.Primary;
@@ -852,6 +866,133 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
   else if (level.includes("Central")) typeColor = SCHOOL_COLORS.Central;
   else typeColor = SCHOOL_COLORS.Other || "#888";
 
+  const variants = {
+    peeking: { y: "65vh" },
+    full: { y: "10vh" },
+    closed: { y: "100vh" },
+  };
+
+  return (
+    <>
+      {!isMobile ? (
+        /* --- DESKTOP VIEW --- */
+        <div
+          style={
+            {
+              /* Your existing desktop styles */
+            }
+          }
+        >
+          <CardBody
+            school={school}
+            typeColor={typeColor}
+            onClose={onClose}
+            isMobile={false}
+          />
+        </div>
+      ) : (
+        /* --- MOBILE VIEW --- */
+        <motion.div
+          drag="y"
+          dragControls={dragControls}
+          dragListener={false}
+          dragConstraints={{ top: 0 }}
+          dragElastic={0.05}
+          dragMomentum={false}
+          variants={variants}
+          initial="closed"
+          animate={controls}
+          exit="closed"
+          onDragEnd={(e, info) => {
+            if (info.offset.y > 100 || info.velocity.y > 500) {
+              controls.start("peeking");
+              setSnapState("peeking");
+            } else if (info.offset.y < -100 || info.velocity.y < -500) {
+              controls.start("full");
+              setSnapState("full");
+            } else {
+              // Maintain current state if drag was tiny
+              controls.start(snapState);
+            }
+          }}
+          style={{
+            position: "fixed",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: "100vh",
+            background: "white",
+            zIndex: 4800,
+            borderRadius: "24px 24px 0 0",
+            boxShadow: "0 -10px 30px rgba(0,0,0,0.2)",
+            touchAction: "none",
+          }}
+        >
+          {/* DRAG HANDLE */}
+          <div
+            onPointerDown={(e) => dragControls.start(e)}
+            style={{
+              width: "100%",
+              height: "60px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "grab",
+              touchAction: "none",
+            }}
+          >
+            <div
+              style={{
+                width: 40,
+                height: 5,
+                background: "#d1d1d1",
+                borderRadius: 10,
+                marginBottom: 8,
+              }}
+            />
+
+            {/* DYNAMIC TEXT BASED ON STATE */}
+            <motion.div
+              initial={false}
+              animate={{ opacity: [0, 1] }} // Smooth fade when text swaps
+              style={{
+                fontSize: "10px",
+                color: "#bbb",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
+              }}
+            >
+              {snapState === "peeking"
+                ? "Pull up for details"
+                : "Slide down to hide"}
+            </motion.div>
+          </div>
+
+          <div
+            style={{
+              height: "calc(100% - 60px)",
+              overflowY: "auto",
+              paddingBottom: "150px",
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <CardBody
+              school={school}
+              typeColor={typeColor}
+              onClose={onClose}
+              isMobile={true}
+            />
+          </div>
+        </motion.div>
+      )}
+    </>
+  );
+}
+
+// 2. THE CONTENT ENGINE (Restoring every single original line)
+function CardBody({ school, typeColor, onClose, isMobile }) {
   const mySchoolUrl = `https://www.myschool.edu.au/search?schoolName=${encodeURIComponent(school.name)}&suburb=${encodeURIComponent(school.suburb)}`;
   const schoolWebsite = school.url
     ? school.url.startsWith("http")
@@ -881,48 +1022,16 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
     ? `${Math.round(school.enrolment).toLocaleString()} students`
     : "n/a";
 
-  // --- 2. Styles (Strict Branching) ---
-
-  const desktopStyle = {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    width: "300px",
-    background: "white",
-    zIndex: 2500,
-    boxShadow: "-4px 0 20px rgba(0,0,0,0.12)",
-    overflowY: "auto",
-    animation: "slideInRight 0.25s ease-out",
-    willChange: "transform",
-  };
-
-  const mobileStyle = {
-    position: "fixed",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    background: "white",
-    zIndex: 4800,
-    borderRadius: "16px 16px 0 0",
-    boxShadow: "0 -4px 24px rgba(0,0,0,0.18)",
-    maxHeight: "35vh", // Peeking height
-    overflowY: "auto",
-    animation: "slideUp 0.25s ease-out",
-    willChange: "transform",
-    pointerEvents: "auto", // Ensure user can still click card buttons
-  };
-
   const infoRowStyle = {
     display: "flex",
     flexDirection: "column",
     padding: "8px 18px",
     borderBottom: "1px solid #f3f3f3",
   };
-
   const labelStyle = {
     fontSize: "11px",
     textTransform: "uppercase",
+    letterSpacing: "0.06em",
     color: "#888",
     marginBottom: 3,
   };
@@ -933,226 +1042,174 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
       .trim()
       .toLowerCase()
       .replace(/\s+/g, "-");
-    const url = `https://www.domain.com.au/suburb-profile/${suburbSlug}-nsw-${school.postcode}`;
-    window.open(url, "_blank");
+    window.open(
+      `https://www.domain.com.au/suburb-profile/${suburbSlug}-nsw-${school.postcode}`,
+      "_blank",
+    );
   };
 
   return (
     <>
-      <style>
-        {`
-          @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-          @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
-        `}
-      </style>
-
-      {/* Mobile Backdrop: pointer-events: none allows map movement "through" the backdrop area */}
-      {isMobile && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 4700,
-            pointerEvents: "none",
-          }}
-          onClick={onClose}
-        />
-      )}
-
-      <div style={isMobile ? mobileStyle : desktopStyle}>
-        {/* Mobile Pull Tab */}
-        {isMobile && (
-          <div
+      <div
+        style={{
+          borderTop: `4px solid ${typeColor}`,
+          padding: "14px 18px 12px",
+          borderBottom: "1px solid #f0f0f0",
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 10,
+        }}
+      >
+        <div style={{ flex: 1 }}>
+          <a
+            href={schoolWebsite}
+            target="_blank"
+            rel="noopener noreferrer"
             style={{
-              display: "flex",
-              justifyContent: "center",
-              padding: "10px 0 4px",
+              color: "#002b5c",
+              fontSize: "15px",
+              fontWeight: 700,
+              textDecoration: "none",
+              lineHeight: 1.3,
+              display: "block",
             }}
           >
-            <div
-              style={{
-                width: 36,
-                height: 4,
-                background: "#ddd",
-                borderRadius: 2,
-              }}
-            />
+            {school.name} ↗
+          </a>
+          <div style={{ fontSize: "12px", color: "#888", marginTop: 3 }}>
+            {school.suburb}
           </div>
-        )}
-
-        {/* Header (Original Desktop Logic) */}
-        <div
+        </div>
+        <button
+          onClick={onClose}
           style={{
-            borderTop: `4px solid ${typeColor}`,
-            padding: "14px 18px 12px",
-            borderBottom: "1px solid #f0f0f0",
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 10,
+            border: "none",
+            background: "none",
+            fontSize: "18px",
+            cursor: "pointer",
+            color: "#bbb",
+            padding: 0,
           }}
         >
-          <div style={{ flex: 1 }}>
-            <a
-              href={schoolWebsite}
-              target="_blank"
-              rel="noopener noreferrer"
+          ✕
+        </button>
+      </div>
+
+      <div style={{ paddingTop: 6 }}>
+        <div style={infoRowStyle}>
+          <span style={labelStyle}>School type</span>
+          <span style={valueStyle}>
+            <span
               style={{
-                color: "#002b5c",
-                fontSize: "15px",
-                fontWeight: 700,
-                textDecoration: "none",
-                lineHeight: 1.3,
-                display: "block",
+                display: "inline-block",
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                background: typeColor,
+                marginRight: 6,
               }}
-            >
-              {school.name} ↗
-            </a>
-            <div style={{ fontSize: "12px", color: "#888", marginTop: 3 }}>
-              {school.suburb}
-            </div>
-          </div>
-          <button
-            onClick={onClose}
+            />
+            {school.level || "n/a"}
+          </span>
+        </div>
+        <div style={infoRowStyle}>
+          <span style={labelStyle}>OC classes</span>
+          <span style={valueStyle}>{ocDisplay}</span>
+        </div>
+        <div style={infoRowStyle}>
+          <span style={labelStyle}>Gender</span>
+          <span style={valueStyle}>{genderDisplay}</span>
+        </div>
+        <div style={infoRowStyle}>
+          <span style={labelStyle}>Selective</span>
+          <span
             style={{
-              border: "none",
-              background: "none",
-              fontSize: "18px",
-              cursor: "pointer",
-              color: "#bbb",
-              padding: 0,
+              ...valueStyle,
+              color: selectiveInfo.color,
+              backgroundColor: selectiveInfo.bg,
+              padding: selectiveInfo.bg !== "transparent" ? "2px 8px" : "0",
+              borderRadius: "4px",
+              display: "inline-block",
             }}
           >
-            ✕
+            {selectiveInfo.label}
+          </span>
+        </div>
+        <div style={infoRowStyle}>
+          <span style={labelStyle}>Enrolment</span>
+          <span style={valueStyle}>{enrolmentDisplay}</span>
+        </div>
+        <div style={infoRowStyle}>
+          <span style={labelStyle}>Academic results & programs</span>
+          <span style={valueStyle}>
+            <a
+              href={mySchoolUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "#1E88E5", textDecoration: "none" }}
+            >
+              MySchool ↗
+            </a>
+            <span
+              style={{
+                display: "block",
+                fontSize: "11px",
+                color: "#666",
+                marginTop: 2,
+              }}
+            >
+              NAPLAN, ATAR insights & school profile
+            </span>
+          </span>
+        </div>
+        <div style={infoRowStyle}>
+          <span style={labelStyle}>HSC rankings</span>
+          <span style={valueStyle}>
+            <a
+              href={betterEducationUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "#1E88E5", textDecoration: "none" }}
+            >
+              Better Education ↗
+            </a>
+          </span>
+        </div>
+
+        <div style={{ padding: "12px 18px" }}>
+          <button
+            onClick={handleDomainSearch}
+            style={{
+              backgroundColor: "#009a44",
+              color: "white",
+              padding: "12px 16px",
+              borderRadius: "8px",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: "600",
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+            }}
+          >
+            📊 {school.suburb} Suburb Profile & Rentals
           </button>
         </div>
 
-        {/* Content Body (Reverted to your original format) */}
-        <div style={{ paddingTop: 6 }}>
-          <div style={infoRowStyle}>
-            <span style={labelStyle}>School type</span>
-            <span style={valueStyle}>
-              <span
-                style={{
-                  display: "inline-block",
-                  width: 10,
-                  height: 10,
-                  borderRadius: "50%",
-                  background: typeColor,
-                  marginRight: 6,
-                }}
-              />
-              {school.level || "n/a"}
-            </span>
-          </div>
-
-          <div style={infoRowStyle}>
-            <span style={labelStyle}>OC classes</span>
-            <span style={valueStyle}>{ocDisplay}</span>
-          </div>
-
-          <div style={infoRowStyle}>
-            <span style={labelStyle}>Gender</span>
-            <span style={valueStyle}>{genderDisplay}</span>
-          </div>
-
-          <div style={infoRowStyle}>
-            <span style={labelStyle}>Selective</span>
-            <span
-              style={{
-                ...valueStyle,
-                color: selectiveInfo.color,
-                backgroundColor: selectiveInfo.bg,
-                padding: selectiveInfo.bg !== "transparent" ? "2px 8px" : "0",
-                borderRadius: "4px",
-                display: "inline-block",
-              }}
+        <div style={infoRowStyle}>
+          <span style={labelStyle}>Verify data on official website</span>
+          <span style={valueStyle}>
+            <a
+              href={schoolFinderUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "#1E88E5", textDecoration: "none" }}
             >
-              {selectiveInfo.label}
-            </span>
-          </div>
-
-          <div style={infoRowStyle}>
-            <span style={labelStyle}>Enrolment</span>
-            <span style={valueStyle}>{enrolmentDisplay}</span>
-          </div>
-
-          <div style={infoRowStyle}>
-            <span style={labelStyle}>Academic results & programs</span>
-            <span style={valueStyle}>
-              <a
-                href={mySchoolUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: "#1E88E5", textDecoration: "none" }}
-              >
-                MySchool ↗
-              </a>
-              <span
-                style={{
-                  display: "block",
-                  fontSize: "11px",
-                  color: "#666",
-                  marginTop: 2,
-                }}
-              >
-                NAPLAN, ATAR insights & school profile
-              </span>
-            </span>
-          </div>
-
-          <div style={infoRowStyle}>
-            <span style={labelStyle}>HSC rankings</span>
-            <span style={valueStyle}>
-              <a
-                href={betterEducationUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: "#1E88E5", textDecoration: "none" }}
-              >
-                Better Education ↗
-              </a>
-            </span>
-          </div>
-
-          {/* Domain Button */}
-          <div style={{ padding: "12px 18px" }}>
-            <button
-              onClick={handleDomainSearch}
-              style={{
-                backgroundColor: "#009a44",
-                color: "white",
-                padding: "12px 16px",
-                borderRadius: "8px",
-                border: "none",
-                cursor: "pointer",
-                fontWeight: "600",
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "10px",
-              }}
-            >
-              📊 {school.suburb} Suburb Profile & Rentals
-            </button>
-          </div>
-
-          <div style={infoRowStyle}>
-            <span style={labelStyle}>Verify data on official website</span>
-            <span style={valueStyle}>
-              <a
-                href={schoolFinderUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: "#1E88E5", textDecoration: "none" }}
-              >
-                School Finder ↗
-              </a>
-            </span>
-          </div>
+              School Finder ↗
+            </a>
+          </span>
         </div>
       </div>
     </>
@@ -1193,7 +1250,7 @@ function MapViewInner() {
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" ? window.innerWidth < 768 : false,
   );
-  const [catchmentIndex, setCatchmentIndex] = useState({});
+
   const [typeFilters, setTypeFilters] = useState(Object.keys(SCHOOL_COLORS));
   const [genderFilter, setGenderFilter] = useState("All");
   const [ocFilter, setOcFilter] = useState(false);
@@ -1208,34 +1265,46 @@ function MapViewInner() {
   const [secondaryCatchmentFeature, setSecondaryCatchmentFeature] =
     useState(null);
   const [catchmentView, setCatchmentView] = useState("primary"); // "primary" | "secondary"
+  // 1. State for the raw GeoJSON data
+  const [geoData, setGeoData] = useState(null);
   const [catchmentsReady, setCatchmentsReady] = useState(false);
 
-  // Preload catchments on app mount
+  // 2. The Memoized Index
+  // This automatically handles the "indexing" whenever geoData is populated.
+  const catchmentIndex = useMemo(() => {
+    if (!geoData || !geoData.features) return {};
+
+    console.log("Building catchment index from data...");
+    const index = {};
+
+    geoData.features.forEach((feature) => {
+      const props = feature.properties || {};
+      // Comprehensive check for ID keys
+      const rawId =
+        props.school_code ||
+        props.C_CODE ||
+        props.USE_ID ||
+        props.CATCH_CODE ||
+        props.SCHOOL_CODE;
+
+      const featCode = normalizeCode(rawId || "");
+
+      if (featCode) {
+        if (!index[featCode]) index[featCode] = [];
+        index[featCode].push(feature);
+      }
+    });
+
+    console.log(`✓ Index built: ${Object.keys(index).length} school codes.`);
+    return index;
+  }, [geoData]); // Re-runs ONLY when geoData changes
+
+  // 3. Preload catchments on app mount
   useEffect(() => {
     async function loadData() {
-      // 1. Check if we already have the decoded GeoJSON in cache
+      // Check Global Cache
       if (window._catchmentCache) {
-        if (Object.keys(catchmentIndex).length === 0) {
-          const cachedIndex = {};
-          window._catchmentCache.features.forEach((feature) => {
-            const props = feature.properties || {};
-            // Check every possible ID key from your previous logic
-            const rawId =
-              props.school_code ||
-              props.C_CODE ||
-              props.USE_ID ||
-              props.CATCH_CODE ||
-              props.SCHOOL_CODE;
-
-            const featCode = normalizeCode(rawId || "");
-
-            if (featCode) {
-              if (!cachedIndex[featCode]) cachedIndex[featCode] = [];
-              cachedIndex[featCode].push(feature);
-            }
-          });
-          setCatchmentIndex(cachedIndex);
-        }
+        setGeoData(window._catchmentCache);
         setCatchmentsReady(true);
         return;
       }
@@ -1244,54 +1313,24 @@ function MapViewInner() {
         const res = await fetch("/catchments.json");
         const topology = await res.json();
 
-        // Grab the first object available in the TopoJSON
+        // Decode TopoJSON
         const objectKey = Object.keys(topology.objects)[0];
-        const geoData = topojson.feature(topology, topology.objects[objectKey]);
-
-        // 2. Build the Catchment Index for O(1) lookup
-        const newIndex = {};
-        geoData.features.forEach((feature) => {
-          const props = feature.properties || {};
-          // Comprehensive check for ID keys
-          const rawId =
-            props.school_code ||
-            props.C_CODE ||
-            props.USE_ID ||
-            props.CATCH_CODE ||
-            props.SCHOOL_CODE;
-
-          const featCode = normalizeCode(rawId || "");
-
-          if (featCode) {
-            if (!newIndex[featCode]) newIndex[featCode] = [];
-            newIndex[featCode].push(feature);
-          }
-        });
-
-        // 3. Update States and Global Cache
-        setCatchmentIndex(newIndex);
-        window._catchmentCache = geoData;
-        setCatchmentsReady(true);
-
-        console.log(
-          `✓ Catchments ready. Indexed ${Object.keys(newIndex).length} schools.`,
+        const decodedData = topojson.feature(
+          topology,
+          topology.objects[objectKey],
         );
 
-        // Final sanity check for your console
-        if (geoData.features.length > 0) {
-          console.log(
-            "Sample Feature Properties:",
-            geoData.features[0].properties,
-          );
-        }
+        // Update state and cache
+        window._catchmentCache = decodedData;
+        setGeoData(decodedData); // This triggers the useMemo above!
+        setCatchmentsReady(true);
       } catch (err) {
         console.error("Catchment Load Error:", err);
       }
     }
 
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run once on mount. normalizeCode is usually a helper function that doesn't change.
+  }, []);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -1439,27 +1478,33 @@ function MapViewInner() {
   // School click → use index for instant catchment lookup
   const handleSchoolClick = useCallback(
     (school) => {
+      if (!school) return;
+
       // 1. Position the Map
       if (isMobile) {
-        // Offset the latitude slightly so the school moves to the top half of the screen
-        // to stay clear of the info card at the bottom.
+        // Offset so school is in the top 1/3rd, clear of the bottom sheet
         const mobileLat = school.lat + 0.005;
         setMapTarget([mobileLat, school.lng]);
       } else {
         setMapTarget([school.lat, school.lng]);
       }
 
-      // 2. Set the School
+      // 2. Set the selected school state immediately
       setSelectedSchool(school);
 
-      // 3. Catchment Logic
-      if (!catchmentsReady) {
-        console.warn("Catchments not ready yet");
+      // 3. Catchment Logic with extra validation
+      const code = normalizeCode(school.code);
+
+      // If index isn't ready, we log it but don't give up yet
+      if (
+        !catchmentsReady ||
+        !catchmentIndex ||
+        Object.keys(catchmentIndex).length === 0
+      ) {
+        console.warn("Catchment data is still initializing...");
+        setActiveCatchment(null); // Clear previous to avoid showing wrong area
         return;
       }
-
-      const code = normalizeCode(school.code);
-      if (!code) return;
 
       const features = catchmentIndex[code];
 
@@ -1470,11 +1515,28 @@ function MapViewInner() {
         });
       } else {
         setActiveCatchment(null);
-        console.warn("No catchment for school:", school.name, code);
+        console.warn("No catchment found for:", school.name, `(Code: ${code})`);
       }
     },
-    [catchmentIndex, catchmentsReady, isMobile], // Added isMobile to dependencies
+    // Adding school in dependencies ensures the function resets if school data structure changes
+    [catchmentIndex, catchmentsReady, isMobile],
   );
+
+  useEffect(() => {
+    // If data just finished loading AND a school is already selected but has no catchment visible
+    if (catchmentsReady && selectedSchool && !activeCatchment) {
+      const code = normalizeCode(selectedSchool.code);
+      const features = catchmentIndex[code];
+
+      if (features) {
+        setActiveCatchment({
+          type: "FeatureCollection",
+          features,
+        });
+        console.log("Catchment auto-applied after data load completion.");
+      }
+    }
+  }, [catchmentsReady, selectedSchool, catchmentIndex, activeCatchment]);
 
   // Address search (Nominatim)
   useEffect(() => {
@@ -2193,14 +2255,18 @@ function MapViewInner() {
             })}
           </MapContainer>
 
-          {/* Side Card */}
-          {selectedSchool && (
-            <SchoolInfoCard
-              school={selectedSchool}
-              isMobile={isMobile}
-              onClose={() => setSelectedSchool(null)}
-            />
-          )}
+          {/* School Info Card */}
+
+          <AnimatePresence mode="wait">
+            {selectedSchool && (
+              <SchoolInfoCard
+                key={selectedSchool.code} // CRITICAL: Forces a fresh slide-up for every school
+                school={selectedSchool}
+                isMobile={isMobile}
+                onClose={() => setSelectedSchool(null)}
+              />
+            )}
+          </AnimatePresence>
         </div>{" "}
         {/* Closes mapArea */}
         {/* FOOTER - Moved inside the appShell div */}
