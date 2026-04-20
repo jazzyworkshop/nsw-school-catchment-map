@@ -851,12 +851,15 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
   const dragControls = useDragControls();
   const [snapState, setSnapState] = useState("peeking");
 
+  // Reset state when school changes
   useEffect(() => {
     if (isMobile && school) {
       controls.start("peeking");
-      setSnapState("peeking"); // Reset to peeking when a new school is picked
+      setSnapState("peeking");
     }
   }, [school, isMobile, controls]);
+
+  if (!school) return null;
 
   const level = school.level || "";
   let typeColor;
@@ -875,13 +878,21 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
   return (
     <>
       {!isMobile ? (
-        /* --- DESKTOP VIEW --- */
+        /* --- RESTORED DESKTOP VIEW --- */
         <div
-          style={
-            {
-              /* Your existing desktop styles */
-            }
-          }
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: "350px", // Standard side panel width
+            background: "white",
+            zIndex: 3000,
+            boxShadow: "-4px 0 20px rgba(0,0,0,0.15)",
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+          }}
         >
           <CardBody
             school={school}
@@ -891,7 +902,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
           />
         </div>
       ) : (
-        /* --- MOBILE VIEW --- */
+        /* --- MOBILE VIEW (Retained) --- */
         <motion.div
           drag="y"
           dragControls={dragControls}
@@ -911,7 +922,6 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
               controls.start("full");
               setSnapState("full");
             } else {
-              // Maintain current state if drag was tiny
               controls.start(snapState);
             }
           }}
@@ -951,11 +961,9 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
                 marginBottom: 8,
               }}
             />
-
-            {/* DYNAMIC TEXT BASED ON STATE */}
             <motion.div
               initial={false}
-              animate={{ opacity: [0, 1] }} // Smooth fade when text swaps
+              animate={{ opacity: [0, 1] }}
               style={{
                 fontSize: "10px",
                 color: "#bbb",
@@ -1508,17 +1516,17 @@ function MapViewInner() {
 
       const features = catchmentIndex[code];
 
-      if (features && features.length > 0) {
-        setActiveCatchment({
-          type: "FeatureCollection",
-          features,
-        });
-      } else {
-        setActiveCatchment(null);
-        console.warn("No catchment found for:", school.name, `(Code: ${code})`);
-      }
+      setTimeout(() => {
+        if (features && features.length > 0) {
+          setActiveCatchment({
+            type: "FeatureCollection",
+            features,
+          });
+        } else {
+          setActiveCatchment(null);
+        }
+      }, 50); // 50ms is usually enough to let the map engine reset
     },
-    // Adding school in dependencies ensures the function resets if school data structure changes
     [catchmentIndex, catchmentsReady, isMobile],
   );
 
