@@ -1280,14 +1280,15 @@ function MapViewInner() {
   // 2. The Memoized Index
   // This automatically handles the "indexing" whenever geoData is populated.
   const catchmentIndex = useMemo(() => {
-    if (!geoData || !geoData.features) return {};
+    if (!geoData?.features) return {};
 
-    console.log("Building catchment index from data...");
-    const index = {};
+    console.log("Building catchment index...");
 
-    geoData.features.forEach((feature) => {
+    const index = Object.create(null);
+
+    for (const feature of geoData.features) {
       const props = feature.properties || {};
-      // Comprehensive check for ID keys
+
       const rawId =
         props.school_code ||
         props.C_CODE ||
@@ -1295,25 +1296,27 @@ function MapViewInner() {
         props.CATCH_CODE ||
         props.SCHOOL_CODE;
 
-      const featCode = normalizeCode(rawId || "");
+      const code = normalizeCode(rawId || "");
+      if (!code) continue;
 
-      if (featCode) {
-        if (!index[featCode]) index[featCode] = [];
-        index[featCode].push(feature);
-      }
-    });
+      if (!index[code]) index[code] = [];
+      index[code].push(feature);
+    }
 
-    console.log(`✓ Index built: ${Object.keys(index).length} school codes.`);
+    console.log(`✓ Index built: ${Object.keys(index).length} codes`);
     return index;
-  }, [geoData]); // Re-runs ONLY when geoData changes
+  }, [geoData]);
 
   // 3. Preload catchments on app mount
   useEffect(() => {
+    let cancelled = false;
     async function loadData() {
       // Check Global Cache
       if (window._catchmentCache) {
-        setGeoData(window._catchmentCache);
-        setCatchmentsReady(true);
+        if (!cancelled) {
+          setGeoData(window._catchmentCache);
+          setCatchmentsReady(true);
+        }
         return;
       }
 
