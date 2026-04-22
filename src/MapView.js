@@ -16,8 +16,8 @@ import Fuse from "fuse.js";
 import {
   motion,
   useAnimation,
-  useDragControls,
   AnimatePresence,
+  useDragControls,
 } from "framer-motion";
 
 /* ────────────────────────────────────────────────────────────────
@@ -851,7 +851,6 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
   const dragControls = useDragControls();
   const [snapState, setSnapState] = useState("peeking");
 
-  // Reset state when school changes
   useEffect(() => {
     if (isMobile && school) {
       controls.start("peeking");
@@ -878,14 +877,14 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
   return (
     <>
       {!isMobile ? (
-        /* --- RESTORED DESKTOP VIEW --- */
+        /* --- DESKTOP VIEW (Unchanged) --- */
         <div
           style={{
             position: "absolute",
             top: 0,
             right: 0,
             bottom: 0,
-            width: "350px", // Standard side panel width
+            width: "350px",
             background: "white",
             zIndex: 3000,
             boxShadow: "-4px 0 20px rgba(0,0,0,0.15)",
@@ -902,7 +901,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
           />
         </div>
       ) : (
-        /* --- MOBILE VIEW (Retained) --- */
+        /* --- UPDATED MOBILE VIEW: REFINED AESTHETICS --- */
         <motion.div
           drag="y"
           dragControls={dragControls}
@@ -927,14 +926,18 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
           }}
           style={{
             position: "fixed",
-            left: 0,
-            right: 0,
+            // Small horizontal inset to create the "floating" effect
+            left: "8px",
+            right: "8px",
             bottom: 0,
             height: "100vh",
             background: "white",
             zIndex: 4800,
+            // 24px Radius as requested
             borderRadius: "24px 24px 0 0",
-            boxShadow: "0 -10px 30px rgba(0,0,0,0.2)",
+            // Modern, subtle multi-layered shadow
+            boxShadow:
+              "0 -8px 30px rgba(0,0,0,0.08), 0 -2px 10px rgba(0,0,0,0.04)",
             touchAction: "none",
           }}
         >
@@ -943,7 +946,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
             onPointerDown={(e) => dragControls.start(e)}
             style={{
               width: "100%",
-              height: "60px",
+              height: "64px", // Slightly taller for better touch target
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
@@ -952,11 +955,12 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
               touchAction: "none",
             }}
           >
+            {/* The Physical Handle Bar */}
             <div
               style={{
-                width: 40,
-                height: 5,
-                background: "#d1d1d1",
+                width: 36,
+                height: 4,
+                background: "#E2E8F0", // Softer gray for a more modern look
                 borderRadius: 10,
                 marginBottom: 8,
               }}
@@ -966,10 +970,10 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
               animate={{ opacity: [0, 1] }}
               style={{
                 fontSize: "10px",
-                color: "#bbb",
+                color: "#94A3B8",
                 fontWeight: 700,
                 textTransform: "uppercase",
-                letterSpacing: "0.5px",
+                letterSpacing: "0.05em",
               }}
             >
               {snapState === "peeking"
@@ -978,11 +982,14 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
             </motion.div>
           </div>
 
+          {/* INNER CONTENT AREA */}
           <div
             style={{
-              height: "calc(100% - 60px)",
+              height: "calc(100% - 64px)",
               overflowY: "auto",
-              paddingBottom: "150px",
+              paddingBottom: "100px",
+              // Ensures the internal content also respects the top radius
+              borderRadius: "24px 24px 0 0",
             }}
             onPointerDown={(e) => e.stopPropagation()}
           >
@@ -999,7 +1006,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
   );
 }
 
-// 2. THE CONTENT ENGINE (Restoring every single original line)
+// 2. THE CONTENT ENGINE
 function CardBody({ school, typeColor, onClose, isMobile }) {
   const mySchoolUrl = `https://www.myschool.edu.au/search?schoolName=${encodeURIComponent(school.name)}&suburb=${encodeURIComponent(school.suburb)}`;
   const schoolWebsite = school.url
