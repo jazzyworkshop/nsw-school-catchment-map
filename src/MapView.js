@@ -1570,9 +1570,10 @@ function MapViewInner() {
     async function runSearch() {
       try {
         setAddressLoading(true);
+        const nswViewbox = "141.0,-28.1,153.6,-37.5";
         const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
           searchTerm.trim(),
-        )}&addressdetails=1&limit=8&countrycodes=au`;
+        )}&addressdetails=1&limit=15&countrycodes=au&viewbox=${nswViewbox}&bounded=1`;
 
         const res = await fetch(url, {
           signal: controller.signal,
@@ -1584,29 +1585,41 @@ function MapViewInner() {
         const data = await res.json();
         if (cancelled) return;
 
-        const mapped = data.map((item) => ({
-          type: "address",
-          label: item.display_name,
-          name: item.display_name,
-          lat: parseFloat(item.lat),
-          lng: parseFloat(item.lon),
-        }));
+        const mapped = data
+          .filter((item) => {
+            const address = item.address || {};
+            const state = address.state || "";
+            return (
+              state.toLowerCase().includes("new south wales") ||
+              state.toLowerCase() === "nsw"
+            );
+          })
+          .slice(0, 8)
+          .map((item) => ({
+            type: "address",
+            label: item.display_name,
+            name: item.display_name,
+            lat: parseFloat(item.lat),
+            lng: parseFloat(item.lon),
+          }));
 
         setAddressResults(mapped);
       } catch (e) {
-        if (!cancelled) setAddressResults([]);
+        if (e.name !== "AbortError" && !cancelled) {
+          setAddressResults([]);
+        }
       } finally {
         if (!cancelled) setAddressLoading(false);
       }
-    }
+    } // End of runSearch
 
-    const t = setTimeout(runSearch, 350);
+    const t = setTimeout(runSearch, 300);
     return () => {
       cancelled = true;
       controller.abort();
       clearTimeout(t);
     };
-  }, [searchTerm]);
+  }, [searchTerm]); // End of useEffect
 
   const handleSelect = (item) => {
     setSearchTerm(item.name);
