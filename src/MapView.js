@@ -1788,7 +1788,7 @@ function MapViewInner() {
     });
   }, [schools]);
 
-  // 2. Fuzzy Search Logic (The replacement for schoolResults)
+  // 2. Fuzzy Search Logic
   const schoolResults = useMemo(() => {
     if (searchTerm.length < 2) return [];
 
@@ -1963,8 +1963,20 @@ function MapViewInner() {
                 placeholder="Search schools, suburbs or address..."
                 value={displayTerm} // Correct
                 onChange={(e) => {
-                  setDisplayTerm(e.target.value);
-                  if (e.target.value.length >= 2) setShowResults(true);
+                  const rawValue = e.target.value;
+
+                  const cleanValue = rawValue.replace(/[<>"{}[\]]/g, "");
+
+                  // Update the visual text box instantly
+                  setDisplayTerm(cleanValue);
+
+                  // Show the results dropdown if the user has typed at least 2 characters
+                  if (cleanValue.length >= 2) {
+                    setShowResults(true);
+                  } else {
+                    // Optional: Hide results if they backspace to 1 or 0 characters
+                    setShowResults(false);
+                  }
                 }}
                 onFocus={() => {
                   if (displayTerm.length >= 2) setShowResults(true);
