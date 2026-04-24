@@ -1250,6 +1250,7 @@ function pointInFeature(lat, lng, feature) {
    ──────────────────────────────────────────────────────────────── */
 function MapViewInner() {
   const [schools, setSchools] = useState([]);
+  const [displayTerm, setDisplayTerm] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSchool, setSelectedSchool] = useState(null);
   const [activeCatchment, setActiveCatchment] = useState(null);
@@ -1454,8 +1455,12 @@ function MapViewInner() {
     setActiveCatchment(null);
     setSelectedSchool(null);
     setSearchForcedSchool(null);
+    setDisplayTerm("");
     setSearchTerm("");
     setAddressMarker(null);
+    setAddressResults([]);
+    setAddressLoading(false);
+    setShowResults(false);
     setPrimaryCatchmentFeature(null);
     setSecondaryCatchmentFeature(null);
     setCatchmentView("primary");
@@ -1558,6 +1563,14 @@ function MapViewInner() {
 
   // Address search (Nominatim)
   useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchTerm(displayTerm);
+    }, 300); // 300ms delay to stop the lag
+
+    return () => clearTimeout(timer);
+  }, [displayTerm]);
+  // Address search (Nominatim) - Triggered only by searchTerm
+  useEffect(() => {
     if (searchTerm.trim().length < 3) {
       setAddressResults([]);
       setAddressLoading(false);
@@ -1611,15 +1624,15 @@ function MapViewInner() {
       } finally {
         if (!cancelled) setAddressLoading(false);
       }
-    } // End of runSearch
+    }
 
-    const t = setTimeout(runSearch, 260);
+    runSearch(); // Call directly because the debounce happens in the first useEffect
+
     return () => {
       cancelled = true;
       controller.abort();
-      clearTimeout(t);
     };
-  }, [searchTerm]); // End of useEffect
+  }, [searchTerm]); // Watches the debounced term
 
   const handleSelect = (item) => {
     setSearchTerm(item.name);
@@ -1948,18 +1961,23 @@ function MapViewInner() {
               <input
                 type="text"
                 placeholder="Search schools, suburbs or address..."
-                value={searchTerm}
+                value={displayTerm} // Correct
                 onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setShowResults(true);
+                  setDisplayTerm(e.target.value);
+                  if (e.target.value.length >= 2) setShowResults(true);
                 }}
                 onFocus={() => {
-                  if (searchTerm.length >= 2) setShowResults(true);
+                  if (displayTerm.length >= 2) setShowResults(true);
                 }}
                 style={styles.searchInput}
               />
-              {searchTerm && (
-                <button onClick={handleClearAll} style={styles.searchClear}>
+
+              {displayTerm && (
+                <button
+                  type="button"
+                  onClick={handleClearAll}
+                  style={styles.searchClear}
+                >
                   ✕
                 </button>
               )}
