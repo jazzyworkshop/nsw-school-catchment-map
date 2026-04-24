@@ -1,90 +1,75 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#002b5c" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#002b5c" />
 
-    <title>NSW School Catchment Area Map | Find Your School Zone (2026 Updated)</title>
+  <title>NSW School Catchment Area Map | Find Your School Zone (2026 Updated)</title>
 
-    <meta
-      name="description"
-      content="Interactive map to find NSW public school catchment areas. Find primary and high school zones by address or suburb with our easy-to-use tool. April 2026 Data."
-    />
-    <meta
-      name="keywords"
-      content="School zoning NSW, NSW School Map, NSW school zones, Sydney school catchment map, School Catchment Finder, Sydney School Boundaries, School Zone Map NSW, Local School Map, School Catchment Areas, Primary school, Secondary school, intake boundaries"
-    />
-    <meta name="author" content="Local School Map" />
+  <link rel="canonical" href="https://localschoolmap.com" />
 
-    <!-- Open Graph -->
-    <meta property="og:title" content="Local School Map | NSW School Boundaries" />
-    <meta property="og:description" content="Interactive tool to find and view NSW public school intake zones." />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://localschoolmap.com" />
-    <meta property="og:image" content="https://localschoolmap.com/logo.png" />
+  <meta name="description" content="Interactive map to find NSW public school catchment areas. Find primary and high school zones by address or suburb with our easy-to-use tool. April 2026 Data." />
+  <meta name="keywords" content="School zoning NSW, NSW School Map, NSW school zones, Sydney school catchment map, School Catchment Finder, Sydney School Boundaries, School Zone Map NSW, Local School Map, School Catchment Areas, Primary school, Secondary school, intake boundaries" />
+  <meta name="author" content="Local School Map" />
 
-    <!-- Icons -->
-    <link rel="icon" type="image/png" href="%PUBLIC_URL%/favicon-96x96.png?v=2" sizes="96x96" />
-    <link rel="icon" type="image/svg+xml" href="%PUBLIC_URL%/favicon.svg?v=2" />
-    <link rel="shortcut icon" href="%PUBLIC_URL%/favicon.ico?v=2" />
-    <link rel="apple-touch-icon" sizes="180x180" href="%PUBLIC_URL%/apple-touch-icon.png" />
-    <meta name="apple-mobile-web-app-title" content="Local School Map" />
-    <link rel="manifest" href="%PUBLIC_URL%/site.webmanifest" />
+  <meta property="og:title" content="Local School Map | NSW School Boundaries" />
+  <meta property="og:description" content="Interactive tool to find and view NSW public school intake zones." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://localschoolmap.com" />
+  <meta property="og:image" content="https://localschoolmap.com/logo.png" />
 
-    <!-- Schema.org: WebSite -->
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "WebSite",
-        "name": "Local School Map",
-        "url": "https://localschoolmap.com"
-      }
-    </script>
+  <link rel="icon" type="image/png" href="%PUBLIC_URL%/favicon-96x96.png?v=2" sizes="96x96" />
+  <link rel="icon" type="image/svg+xml" href="%PUBLIC_URL%/favicon.svg?v=2" />
+  <link rel="shortcut icon" href="%PUBLIC_URL%/favicon.ico?v=2" />
+  <link rel="apple-touch-icon" sizes="180x180" href="%PUBLIC_URL%/apple-touch-icon.png" />
+  <link rel="manifest" href="%PUBLIC_URL%/site.webmanifest" />
 
-    <!-- Schema.org: Organization -->
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Local School Map" />
+
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Local School Map",
+      "url": "https://localschoolmap.com"
+    }
+  </script>
+
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Local School Map",
+      "url": "https://localschoolmap.com",
+      "logo": "https://localschoolmap.com/logo.png"
+    }
+  </script>
+
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Local School Map",
+      "url": "https://localschoolmap.com",
+      "description": "Find NSW public school catchment zones and school details.",
+      "applicationCategory": "EducationalApplication",
+      "operatingSystem": "Web",
+      "browserRequirements": "Requires JavaScript",
+      "image": "https://localschoolmap.com/logo.png",
+      "creator": {
         "@type": "Organization",
-        "name": "Local School Map",
-        "url": "https://localschoolmap.com",
-        "logo": "https://localschoolmap.com/logo.png"
+        "name": "Local School Map"
+      },
+      "areaServed": {
+        "@type": "State",
+        "name": "New South Wales"
       }
-    </script>
-
-<meta name="theme-color" content="#002b5c">
-
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="SchoolLens">
-
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-
-    <!-- Schema.org: WebApplication (enhanced) -->
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "WebApplication",
-        "name": "Local School Map",
-        "url": "https://localschoolmap.com",
-        "description": "Find NSW public school catchment zones and school details.",
-        "applicationCategory": "EducationalApplication",
-        "operatingSystem": "Web",
-        "browserRequirements": "Requires JavaScript",
-        "image": "https://localschoolmap.com/logo.png",
-        "creator": {
-          "@type": "Organization",
-          "name": "Local School Map"
-        },
-        "areaServed": {
-          "@type": "State",
-          "name": "New South Wales"
-        }
-      }
-    </script>
-
-  </head>
+    }
+  </script>
+</head>
 
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

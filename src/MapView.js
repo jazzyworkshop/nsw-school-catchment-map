@@ -1613,7 +1613,7 @@ function MapViewInner() {
       }
     } // End of runSearch
 
-    const t = setTimeout(runSearch, 300);
+    const t = setTimeout(runSearch, 260);
     return () => {
       cancelled = true;
       controller.abort();
