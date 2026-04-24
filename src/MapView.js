@@ -952,13 +952,14 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
               alignItems: "center",
               justifyContent: "center",
               cursor: "grab",
+              backgroundColor: "transparent",
               touchAction: "none",
             }}
           >
             {/* The Physical Handle Bar */}
             <div
               style={{
-                width: 36,
+                width: 40,
                 height: 4,
                 background: "#E2E8F0", // Softer gray for a more modern look
                 borderRadius: 10,
@@ -1466,13 +1467,13 @@ function MapViewInner() {
     setCatchmentView("primary");
   }
 
-  const handleClearFilters = () => {
+  const handleClearFilters = useCallback(() => {
     setTypeFilters(Object.keys(SCHOOL_COLORS));
     setGenderFilter("All");
     setOcFilter(false);
     setSelectiveFilter("all");
     setSearchForcedSchool(null);
-  };
+  }, []);
 
   // Map click: click outside catchment clears; inside does nothing
   const handleMapClick = useCallback(
@@ -1961,6 +1962,7 @@ function MapViewInner() {
               <input
                 type="text"
                 placeholder="Search schools, suburbs or address..."
+                aria-label="Search for NSW schools and catchment zones by address or name"
                 value={displayTerm} // Correct
                 onChange={(e) => {
                   const rawValue = e.target.value;
@@ -1989,6 +1991,8 @@ function MapViewInner() {
                   type="button"
                   onClick={handleClearAll}
                   style={styles.searchClear}
+                  aria-label="Clear search"
+                  title="Clear search"
                 >
                   ✕
                 </button>
