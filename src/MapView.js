@@ -9,17 +9,12 @@ import {
   Marker,
 } from "react-leaflet";
 import L from "leaflet";
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from "react-router-dom";
 import "leaflet/dist/leaflet.css";
 import * as turf from "@turf/turf";
 import * as topojson from "topojson-client";
 import Fuse from "fuse.js";
-import {
-  motion,
-  useAnimation,
-  AnimatePresence,
-  useDragControls,
-} from "framer-motion";
+import { motion, useAnimation, AnimatePresence } from "framer-motion";
 
 /* ────────────────────────────────────────────────────────────────
    LEAFLET ICON
@@ -830,7 +825,7 @@ function ToggleRow({ checked, onChange, label, icon, sublabel, tooltip }) {
    ──────────────────────────────────────────────────────────────── */
 function SchoolInfoCard({ school, isMobile, onClose }) {
   const controls = useAnimation();
-  const dragControls = useDragControls();
+
   const [snapState, setSnapState] = useState("peeking");
 
   useEffect(() => {
@@ -886,20 +881,35 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
         /* --- UPDATED MOBILE VIEW: REFINED AESTHETICS --- */
         <motion.div
           drag="y"
-          dragControls={dragControls}
-          dragListener={false}
-          dragConstraints={{ top: 0 }}
-          dragElastic={0.05}
+          dragConstraints={{ top: 0, bottom: 0 }}
+          dragElastic={0.1}
+          dragDirectionLock
           dragMomentum={false}
+          dragTransition={{
+            min: 0,
+            max: 0,
+            bounceStiffness: 500,
+            bounceDamping: 40,
+          }}
+          dragListener={true}
           variants={variants}
           initial="closed"
           animate={controls}
           exit="closed"
           onDragEnd={(e, info) => {
-            if (info.offset.y > 100 || info.velocity.y > 500) {
+            const swipeThreshold = 20;
+            const velocityThreshold = 50;
+
+            if (
+              info.velocity.y > velocityThreshold ||
+              info.offset.y > swipeThreshold
+            ) {
               controls.start("peeking");
               setSnapState("peeking");
-            } else if (info.offset.y < -100 || info.velocity.y < -500) {
+            } else if (
+              info.velocity.y < -velocityThreshold ||
+              info.offset.y < -swipeThreshold
+            ) {
               controls.start("full");
               setSnapState("full");
             } else {
@@ -908,73 +918,50 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
           }}
           style={{
             position: "fixed",
-            // Small horizontal inset to create the "floating" effect
             left: "8px",
             right: "8px",
             bottom: 0,
             height: "100vh",
             background: "white",
             zIndex: 4800,
-            // Radius
             borderRadius: "24px 24px 0 0",
-            // Modern, subtle multi-layered shadow
-            boxShadow:
-              "0 -8px 30px rgba(0,0,0,0.08), 0 -2px 10px rgba(0,0,0,0.04)",
-            touchAction: "none",
+            boxShadow: "0 -8px 30px rgba(0,0,0,0.08)",
+            // 1. CHANGE: Allow 'pan-y' so the browser can distinguish taps from scrolls
+            touchAction: "pan-y",
+            willChange: "transform",
           }}
         >
-          {/* DRAG HANDLE */}
+          {/* 2. REMOVE the "Hidden Overlay" div entirely if it's still there */}
+
+          {/* VISUAL HANDLE */}
           <div
-            onPointerDown={(e) => dragControls.start(e)}
             style={{
               width: "100%",
-              height: "64px", // Slightly taller for better touch target
+              height: "30px",
               display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
               justifyContent: "center",
-              cursor: "grab",
-              backgroundColor: "transparent",
-              touchAction: "none",
             }}
           >
-            {/* The Physical Handle Bar */}
             <div
               style={{
                 width: 40,
-                height: 4,
+                height: 5,
                 background: "#E2E8F0",
                 borderRadius: 10,
-                marginBottom: 8,
+                marginTop: "12px",
               }}
             />
-            <motion.div
-              initial={false}
-              animate={{ opacity: [0, 1] }}
-              style={{
-                fontSize: "10px",
-                color: "#94A3B8",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-              }}
-            >
-              {snapState === "peeking"
-                ? "Pull up for details"
-                : "Slide down to hide"}
-            </motion.div>
           </div>
 
-          {/* INNER CONTENT AREA */}
+          {/* 3. INNER CONTENT AREA - CLICKABLE AGAIN */}
           <div
             style={{
-              height: "calc(100% - 64px)",
-              overflowY: "auto",
+              height: "calc(100% - 30px)",
+              overflowY: snapState === "full" ? "auto" : "hidden",
               paddingBottom: "100px",
-              // Ensures the internal content also respects the top radius
-              borderRadius: "24px 24px 0 0",
+              // 4. IMPORTANT: Let the content receive pointer events
+              pointerEvents: "auto",
             }}
-            onPointerDown={(e) => e.stopPropagation()}
           >
             <CardBody
               school={school}
@@ -1051,42 +1038,82 @@ function CardBody({ school, typeColor, onClose, isMobile }) {
       <div
         style={{
           borderTop: `4px solid ${typeColor}`,
-          padding: "14px 18px 12px",
+          padding: isMobile ? "12px 16px" : "14px 18px", // Slightly tighter on mobile
           borderBottom: "1px solid #f0f0f0",
           display: "flex",
           alignItems: "flex-start",
-          gap: 10,
+          justifyContent: "space-between",
+          gap: "12px",
+          backgroundColor: "white",
+          borderRadius: "24px 24px 0 0", // Matches your card's outer radius
         }}
       >
-        <div style={{ flex: 1 }}>
+        {/* Text Container */}
+        <div style={{ flex: 1, minWidth: 0 }}>
           <a
             href={schoolWebsite}
             target="_blank"
             rel="noopener noreferrer"
             style={{
               color: "#002b5c",
-              fontSize: "15px",
-              fontWeight: 700,
+              fontSize: isMobile ? "15px" : "17px",
+              fontWeight: 800, // Heavier weight for better hierarchy
               textDecoration: "none",
-              lineHeight: 1.3,
-              display: "block",
+              lineHeight: 1.2,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              wordBreak: "break-word",
             }}
           >
-            {school.name} ↗
+            {school.name}
+            <span
+              style={{
+                display: "inline-block",
+                fontSize: "11px",
+                marginLeft: "4px",
+                verticalAlign: "middle",
+                opacity: 0.6,
+              }}
+            >
+              ↗
+            </span>
           </a>
-          <div style={{ fontSize: "12px", color: "#888", marginTop: 3 }}>
+
+          <div
+            style={{
+              fontSize: "12px",
+              color: "#666", // Slightly darker for better readability
+              marginTop: "4px",
+              fontWeight: 500,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
             {school.suburb}
           </div>
         </div>
+
+        {/* Close Button - Larger touch target for mobile */}
         <button
           onClick={onClose}
           style={{
             border: "none",
-            background: "none",
-            fontSize: "18px",
+            background: "#f5f5f5", // Subtle background makes it easier to spot
+            borderRadius: "50%",
+            width: "30px",
+            height: "30px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "16px",
             cursor: "pointer",
-            color: "#bbb",
-            padding: 0,
+            color: "#888",
+            flexShrink: 0, // Prevents the button from squishing
+            touchAction: "manipulation",
           }}
         >
           ✕
@@ -1441,7 +1468,7 @@ function MapViewInner() {
   }, [selectedSchool]);
 
   // Clear everything (used by clear pill, search clear, and map click)
-  function handleClearAll() {
+  const handleClearAll = useCallback(() => {
     setActiveCatchment(null);
     setSelectedSchool(null);
     setSearchForcedSchool(null);
@@ -1454,8 +1481,12 @@ function MapViewInner() {
     setPrimaryCatchmentFeature(null);
     setSecondaryCatchmentFeature(null);
     setCatchmentView("primary");
-  }
 
+    // Clean URL back to home
+    navigate("/");
+  }, [navigate]);
+
+  // 2. Clear filters logic
   const handleClearFilters = useCallback(() => {
     setTypeFilters(Object.keys(SCHOOL_COLORS));
     setGenderFilter("All");
@@ -1485,15 +1516,20 @@ function MapViewInner() {
 
       handleClearAll();
     },
-    [primaryCatchmentFeature, secondaryCatchmentFeature, activeCatchment],
+    [
+      primaryCatchmentFeature,
+      secondaryCatchmentFeature,
+      activeCatchment,
+      handleClearAll,
+    ],
   );
 
   // School click → use index for instant catchment lookup
   const handleSchoolClick = useCallback(
     (school) => {
       if (!school) return;
-      const slug = school.name.toLowerCase().replace(/\s+/g, '-');
-navigate(`/catchment/${slug}`);
+      const slug = school.name.toLowerCase().replace(/\s+/g, "-");
+      navigate(`/catchment/${slug}`);
       // 1. Position the Map
       if (isMobile) {
         // Offset so school is in the top 1/3rd, clear of the bottom sheet
@@ -1551,24 +1587,22 @@ navigate(`/catchment/${slug}`);
     }
   }, [catchmentsReady, selectedSchool, catchmentIndex, activeCatchment]);
 
-
   useEffect(() => {
-  // Only run this if we have a slug in the URL and our schools list has loaded
-  if (schoolSlug && schools.length > 0) {
-    
-    // Find the school that matches the URL slug
-    // We convert the school name to a slug just like we did in handleSchoolClick
-    const targetSchool = schools.find(s => 
-      s.name.toLowerCase().replace(/\s+/g, '-') === schoolSlug
-    );
+    // Only run this if we have a slug in the URL and our schools list has loaded
+    if (schoolSlug && schools.length > 0) {
+      // Find the school that matches the URL slug
+      // We convert the school name to a slug just like we did in handleSchoolClick
+      const targetSchool = schools.find(
+        (s) => s.name.toLowerCase().replace(/\s+/g, "-") === schoolSlug,
+      );
 
-    if (targetSchool) {
-      console.log("Deep link detected for:", targetSchool.name);
-      // This triggers the map zoom and shows the catchment automatically
-      handleSchoolClick(targetSchool);
+      if (targetSchool) {
+        console.log("Deep link detected for:", targetSchool.name);
+        // This triggers the map zoom and shows the catchment automatically
+        handleSchoolClick(targetSchool);
+      }
     }
-  }
-}, [schoolSlug, schools, handleSchoolClick]);
+  }, [schoolSlug, schools, handleSchoolClick]);
   // Address search (Nominatim)
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -1910,7 +1944,6 @@ navigate(`/catchment/${slug}`);
           box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
         }
       `}</style>
-      
       <div style={{ ...styles.appShell, willChange: "transform" }}>
         {/* HEADER */}
         <header style={styles.header}>
@@ -1955,84 +1988,6 @@ navigate(`/catchment/${slug}`);
             </button>
           )}
         </header>
-
-       {/* FLOATING CATCHMENT INDICATOR (SEO & UX BOOST) */}
-{selectedSchool && (
-  <div style={{
-    position: 'absolute',
-    top: isMobile ? '110px' : '130px',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    zIndex: 1001, 
-    backgroundColor: 'white',
-    padding: isMobile ? '10px 40px 10px 16px' : '12px 45px 12px 24px', // Extra padding on right for the X
-    borderRadius: '14px',
-    boxShadow: '0 8px 30px rgba(0,0,0,0.2)',
-    border: '2px solid #002b5c',
-    textAlign: 'left', // Changed to left to balance the X on the right
-    pointerEvents: 'auto', // MUST BE AUTO so we can click the X
-    width: isMobile ? '90%' : 'auto',
-    maxWidth: '550px',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center'
-  }}>
-    {/* THE CLOSE BUTTON */}
-    <button
-      onClick={() => {
-        handleClearAll();
-        navigate('/'); // Clean the URL when closing
-      }}
-      style={{
-        position: 'absolute',
-        right: '10px',
-        top: '50%',
-        transform: 'translateY(-50%)',
-        width: '28px',
-        height: '28px',
-        borderRadius: '50%',
-        backgroundColor: '#f0f2f5',
-        border: 'none',
-        color: '#002b5c',
-        fontSize: '18px',
-        fontWeight: 'bold',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        transition: 'background 0.2s',
-        padding: 0,
-        lineHeight: 0
-      }}
-      onMouseEnter={(e) => e.target.style.backgroundColor = '#e0e4e8'}
-      onMouseLeave={(e) => e.target.style.backgroundColor = '#f0f2f5'}
-      title="Clear selection"
-    >
-      ×
-    </button>
-
-    <h2 style={{ 
-      margin: 0, 
-      fontSize: isMobile ? '14px' : '17px', 
-      color: '#002b5c', 
-      fontWeight: 800,
-      textTransform: 'uppercase',
-      letterSpacing: '0.5px',
-      paddingRight: '10px'
-    }}>
-      {selectedSchool.name}
-    </h2>
-    <div style={{ 
-      fontSize: isMobile ? '10px' : '12px', 
-      fontWeight: '700', 
-      color: '#e63946', 
-      marginTop: '2px' 
-    }}>
-      OFFICIAL CATCHMENT AREA / INTAKE ZONE
-    </div>
-  </div>
-)}
-
         {/* MAP AREA */}
         <div style={styles.mapArea}>
           {/* Search bar wrapper with dynamic positioning */}
@@ -2201,29 +2156,70 @@ navigate(`/catchment/${slug}`);
             <div style={styles.loadingBadge}>⏳ Loading catchments…</div>
           )}
 
-          {/* Filter warning (Kept for UX when filters hide a search result) */}
-{searchForcedSchool && (
-  <div
-    style={{
-      position: "absolute",
-      top: showAddressToggle ? 100 : 68,
-      left: "50%",
-      transform: "translateX(-50%)",
-      zIndex: 2000,
-      background: "#fff8e1",
-      border: "1px solid #f59e0b",
-      color: "#7a4500",
-      padding: "6px 14px",
-      borderRadius: "20px",
-      fontSize: "11px",
-      fontWeight: 500,
-      whiteSpace: "nowrap",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-    }}
-  >
-    ⚠️ This school is hidden by your current filters
-  </div>
-)}
+          {/* Filter warning / clear pill */}
+          {searchForcedSchool ? (
+            <div
+              style={{
+                position: "absolute",
+                top: 80,
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 2000,
+                background: "#fff8e1",
+                border: "1px solid #f59e0b",
+                color: "#7a4500",
+                padding: "6px 14px",
+                borderRadius: "20px",
+                fontSize: "11px",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+              }}
+            >
+              ⚠️ This school is hidden by your current filters
+            </div>
+          ) : (
+            activeCatchment && (
+              <button
+                onClick={() => {
+                  handleClearAll();
+                  navigate("/");
+                }}
+                style={{
+                  position: "absolute",
+                  top: "60px", // Sits just below your header
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  zIndex: 2000,
+                  backgroundColor: "#e63946", // Modern red
+                  color: "white",
+                  border: "none",
+                  padding: "8px 18px",
+                  borderRadius: "25px",
+                  fontSize: "11px",
+                  fontWeight: "700",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  boxShadow: "0 4px 15px rgba(230, 57, 70, 0.3)",
+                  transition: "all 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "#c12a35";
+                  e.currentTarget.style.transform =
+                    "translateX(-50%) scale(1.05)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "#e63946";
+                  e.currentTarget.style.transform = "translateX(-50%) scale(1)";
+                }}
+              >
+                <span style={{ fontSize: "14px", lineHeight: 0 }}>✕</span>
+                CLEAR SELECTION
+              </button>
+            )
+          )}
 
           {/* MAP */}
           <MapContainer
