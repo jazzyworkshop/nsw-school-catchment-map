@@ -9,6 +9,7 @@ import {
   Marker,
 } from "react-leaflet";
 import L from "leaflet";
+import { useParams, useNavigate } from 'react-router-dom';
 import "leaflet/dist/leaflet.css";
 import * as turf from "@turf/turf";
 import * as topojson from "topojson-client";
@@ -23,13 +24,12 @@ import {
 /* ────────────────────────────────────────────────────────────────
    LEAFLET ICON
    ──────────────────────────────────────────────────────────────── */
-import icon from "leaflet/dist/images/marker-icon.png";
-import iconShadow from "leaflet/dist/images/marker-shadow.png";
 
 let DefaultIcon = L.icon({
-  iconUrl: icon,
-  shadowUrl: iconShadow,
+  iconUrl: "/marker-icon.png", // Make sure these paths are correct!
+  shadowUrl: "/marker-shadow.png",
 });
+
 L.Marker.prototype.options.icon = DefaultIcon;
 
 /* ────────────────────────────────────────────────────────────────
@@ -236,21 +236,6 @@ const styles = {
     inset: 0,
     background: "rgba(0,0,0,0.3)",
     zIndex: 4500,
-  },
-  clearPill: {
-    position: "absolute",
-    top: 68,
-    left: "50%",
-    transform: "translateX(-50%)",
-    zIndex: 2000,
-    background: "#ff4444",
-    color: "white",
-    border: "none",
-    padding: "6px 14px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    cursor: "pointer",
-    whiteSpace: "nowrap",
   },
   searchModeToggle: {
     position: "absolute",
@@ -1252,6 +1237,8 @@ function MapViewInner() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSchool, setSelectedSchool] = useState(null);
   const [activeCatchment, setActiveCatchment] = useState(null);
+  const navigate = useNavigate();
+  const { schoolSlug } = useParams();
 
   const [futureCatchments, setFutureCatchments] = useState(null);
   const [mapTarget, setMapTarget] = useState(null);
@@ -1445,6 +1432,14 @@ function MapViewInner() {
     return window._catchmentCache;
   }, []);
 
+  useEffect(() => {
+    if (selectedSchool && selectedSchool.name) {
+      document.title = `${selectedSchool.name} Catchment Map | Local School Map`;
+    } else {
+      document.title = `NSW School Catchment & Zoning Map | Local School Map`;
+    }
+  }, [selectedSchool]);
+
   // Clear everything (used by clear pill, search clear, and map click)
   function handleClearAll() {
     setActiveCatchment(null);
@@ -1497,7 +1492,8 @@ function MapViewInner() {
   const handleSchoolClick = useCallback(
     (school) => {
       if (!school) return;
-
+      const slug = school.name.toLowerCase().replace(/\s+/g, '-');
+navigate(`/catchment/${slug}`);
       // 1. Position the Map
       if (isMobile) {
         // Offset so school is in the top 1/3rd, clear of the bottom sheet
@@ -1536,7 +1532,7 @@ function MapViewInner() {
         }
       }, 50); // 50ms to let map engine reset
     },
-    [catchmentIndex, catchmentsReady, isMobile],
+    [catchmentIndex, catchmentsReady, isMobile, navigate],
   );
 
   useEffect(() => {
@@ -1555,6 +1551,24 @@ function MapViewInner() {
     }
   }, [catchmentsReady, selectedSchool, catchmentIndex, activeCatchment]);
 
+
+  useEffect(() => {
+  // Only run this if we have a slug in the URL and our schools list has loaded
+  if (schoolSlug && schools.length > 0) {
+    
+    // Find the school that matches the URL slug
+    // We convert the school name to a slug just like we did in handleSchoolClick
+    const targetSchool = schools.find(s => 
+      s.name.toLowerCase().replace(/\s+/g, '-') === schoolSlug
+    );
+
+    if (targetSchool) {
+      console.log("Deep link detected for:", targetSchool.name);
+      // This triggers the map zoom and shows the catchment automatically
+      handleSchoolClick(targetSchool);
+    }
+  }
+}, [schoolSlug, schools, handleSchoolClick]);
   // Address search (Nominatim)
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -1896,6 +1910,7 @@ function MapViewInner() {
           box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
         }
       `}</style>
+      
       <div style={{ ...styles.appShell, willChange: "transform" }}>
         {/* HEADER */}
         <header style={styles.header}>
@@ -1927,7 +1942,7 @@ function MapViewInner() {
               Local School Map
             </h1>
             <p style={styles.headerSub}>
-              NSW Public School Catchment Areas (Unofficial Tool)
+              NSW School Catchment Areas (Unofficial Zoning Tool)
             </p>
           </div>
           {isMobile && (
@@ -1940,6 +1955,84 @@ function MapViewInner() {
             </button>
           )}
         </header>
+
+       {/* FLOATING CATCHMENT INDICATOR (SEO & UX BOOST) */}
+{selectedSchool && (
+  <div style={{
+    position: 'absolute',
+    top: isMobile ? '110px' : '130px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 1001, 
+    backgroundColor: 'white',
+    padding: isMobile ? '10px 40px 10px 16px' : '12px 45px 12px 24px', // Extra padding on right for the X
+    borderRadius: '14px',
+    boxShadow: '0 8px 30px rgba(0,0,0,0.2)',
+    border: '2px solid #002b5c',
+    textAlign: 'left', // Changed to left to balance the X on the right
+    pointerEvents: 'auto', // MUST BE AUTO so we can click the X
+    width: isMobile ? '90%' : 'auto',
+    maxWidth: '550px',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center'
+  }}>
+    {/* THE CLOSE BUTTON */}
+    <button
+      onClick={() => {
+        handleClearAll();
+        navigate('/'); // Clean the URL when closing
+      }}
+      style={{
+        position: 'absolute',
+        right: '10px',
+        top: '50%',
+        transform: 'translateY(-50%)',
+        width: '28px',
+        height: '28px',
+        borderRadius: '50%',
+        backgroundColor: '#f0f2f5',
+        border: 'none',
+        color: '#002b5c',
+        fontSize: '18px',
+        fontWeight: 'bold',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'background 0.2s',
+        padding: 0,
+        lineHeight: 0
+      }}
+      onMouseEnter={(e) => e.target.style.backgroundColor = '#e0e4e8'}
+      onMouseLeave={(e) => e.target.style.backgroundColor = '#f0f2f5'}
+      title="Clear selection"
+    >
+      ×
+    </button>
+
+    <h2 style={{ 
+      margin: 0, 
+      fontSize: isMobile ? '14px' : '17px', 
+      color: '#002b5c', 
+      fontWeight: 800,
+      textTransform: 'uppercase',
+      letterSpacing: '0.5px',
+      paddingRight: '10px'
+    }}>
+      {selectedSchool.name}
+    </h2>
+    <div style={{ 
+      fontSize: isMobile ? '10px' : '12px', 
+      fontWeight: '700', 
+      color: '#e63946', 
+      marginTop: '2px' 
+    }}>
+      OFFICIAL CATCHMENT AREA / INTAKE ZONE
+    </div>
+  </div>
+)}
+
         {/* MAP AREA */}
         <div style={styles.mapArea}>
           {/* Search bar wrapper with dynamic positioning */}
@@ -2108,36 +2201,29 @@ function MapViewInner() {
             <div style={styles.loadingBadge}>⏳ Loading catchments…</div>
           )}
 
-          {/* Filter warning / clear pill */}
-          {searchForcedSchool ? (
-            <div
-              style={{
-                position: "absolute",
-                top: showAddressToggle ? 100 : 68,
-                left: "50%",
-                transform: "translateX(-50%)",
-                zIndex: 2000,
-                background: "#fff8e1",
-                border: "1px solid #f59e0b",
-                color: "#7a4500",
-                padding: "6px 14px",
-                borderRadius: "20px",
-                fontSize: "11px",
-                fontWeight: 500,
-                whiteSpace: "nowrap",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-              }}
-            >
-              ⚠️ This school is hidden by your current filters
-            </div>
-          ) : (
-            activeCatchment &&
-            !addressMarker && (
-              <button style={styles.clearPill} onClick={handleClearAll}>
-                ✕ Clear
-              </button>
-            )
-          )}
+          {/* Filter warning (Kept for UX when filters hide a search result) */}
+{searchForcedSchool && (
+  <div
+    style={{
+      position: "absolute",
+      top: showAddressToggle ? 100 : 68,
+      left: "50%",
+      transform: "translateX(-50%)",
+      zIndex: 2000,
+      background: "#fff8e1",
+      border: "1px solid #f59e0b",
+      color: "#7a4500",
+      padding: "6px 14px",
+      borderRadius: "20px",
+      fontSize: "11px",
+      fontWeight: 500,
+      whiteSpace: "nowrap",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+    }}
+  >
+    ⚠️ This school is hidden by your current filters
+  </div>
+)}
 
           {/* MAP */}
           <MapContainer
