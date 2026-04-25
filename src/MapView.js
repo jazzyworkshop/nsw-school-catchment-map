@@ -21,7 +21,7 @@ import {
 } from "framer-motion";
 
 /* ────────────────────────────────────────────────────────────────
-   LEAFLET ICON FIX
+   LEAFLET ICON
    ──────────────────────────────────────────────────────────────── */
 import icon from "leaflet/dist/images/marker-icon.png";
 import iconShadow from "leaflet/dist/images/marker-shadow.png";
@@ -303,7 +303,7 @@ const styles = {
     alignItems: "center",
     gap: 6,
     boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-    pointerEvents: "none", // 🔥 important: doesn't block clicks
+    pointerEvents: "none",
   },
   addressCatchmentButton: (active) => ({
     padding: "5px 10px",
@@ -493,9 +493,6 @@ function FilterPanel({
   );
 }
 
-/* ────────────────────────────────────────────────────────────────
-   FILTER CONTENT
-   ──────────────────────────────────────────────────────────────── */
 /* ────────────────────────────────────────────────────────────────
    FILTER CONTENT (Memoized)
    ──────────────────────────────────────────────────────────────── */
@@ -877,7 +874,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
   return (
     <>
       {!isMobile ? (
-        /* --- DESKTOP VIEW (Unchanged) --- */
+        /* DESKTOP VIEW */
         <div
           style={{
             position: "absolute",
@@ -933,7 +930,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
             height: "100vh",
             background: "white",
             zIndex: 4800,
-            // 24px Radius as requested
+            // Radius
             borderRadius: "24px 24px 0 0",
             // Modern, subtle multi-layered shadow
             boxShadow:
@@ -961,7 +958,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
               style={{
                 width: 40,
                 height: 4,
-                background: "#E2E8F0", // Softer gray for a more modern look
+                background: "#E2E8F0",
                 borderRadius: 10,
                 marginBottom: 8,
               }}
@@ -1282,12 +1279,10 @@ function MapViewInner() {
   const [secondaryCatchmentFeature, setSecondaryCatchmentFeature] =
     useState(null);
   const [catchmentView, setCatchmentView] = useState("primary"); // "primary" | "secondary"
-  // 1. State for the raw GeoJSON data
   const [geoData, setGeoData] = useState(null);
   const [catchmentsReady, setCatchmentsReady] = useState(false);
 
-  // 2. The Memoized Index
-  // This automatically handles the "indexing" whenever geoData is populated.
+  // The Memoized Index
   const catchmentIndex = useMemo(() => {
     if (!geoData?.features) return {};
 
@@ -1342,7 +1337,7 @@ function MapViewInner() {
 
         // Update state and cache
         window._catchmentCache = decodedData;
-        setGeoData(decodedData); // This triggers the useMemo above!
+        setGeoData(decodedData); // Triggers the useMemo above.
         setCatchmentsReady(true);
       } catch (err) {
         console.error("Catchment Load Error:", err);
@@ -1402,7 +1397,6 @@ function MapViewInner() {
           const props = f.properties || {};
 
           // 1. Identify which property holds the year.
-          // Check your console if 'YEAR' doesn't work (might be 'ACT_YEAR' or similar).
           const yearValue = parseInt(props.YEAR || props.ACT_YEAR || 0, 10);
 
           // 2. Filter for catchments active between 2027 and 2032
@@ -1519,7 +1513,6 @@ function MapViewInner() {
       // 3. Catchment Logic with extra validation
       const code = normalizeCode(school.code);
 
-      // If index isn't ready, we log it but don't give up yet
       if (
         !catchmentsReady ||
         !catchmentIndex ||
@@ -1541,7 +1534,7 @@ function MapViewInner() {
         } else {
           setActiveCatchment(null);
         }
-      }, 50); // 50ms is usually enough to let the map engine reset
+      }, 50); // 50ms to let map engine reset
     },
     [catchmentIndex, catchmentsReady, isMobile],
   );

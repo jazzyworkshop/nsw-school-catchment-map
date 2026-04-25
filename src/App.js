@@ -1,6 +1,6 @@
 import React from "react";
 import "./App.css";
-import MapView from "./MapView"; // This line connects the two files
+import MapView from "./MapView";
 
 function App() {
   return (

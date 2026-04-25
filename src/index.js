@@ -11,8 +11,6 @@ root.render(
   </React.StrictMode>,
 );
 
-// ... your existing React imports and root.render ...
-
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
