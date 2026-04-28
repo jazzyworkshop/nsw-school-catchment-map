@@ -925,6 +925,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
             background: "white",
             zIndex: 4800,
             borderRadius: "24px 24px 0 0",
+            overflow: "hidden",
             boxShadow: "0 -8px 30px rgba(0,0,0,0.08)",
             // 1. CHANGE: Allow 'pan-y' so the browser can distinguish taps from scrolls
             touchAction: "pan-y",
