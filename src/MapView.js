@@ -1527,22 +1527,28 @@ function MapViewInner() {
   // School click → use index for instant catchment lookup
   const handleSchoolClick = useCallback(
     (school) => {
-      if (!school) return;
-      const slug = school.name.toLowerCase().replace(/\s+/g, "-");
-      navigate(`/catchment/${slug}`);
-      // 1. Position the Map
-      if (isMobile) {
-        // Offset so school is in the top 1/3rd, clear of the bottom sheet
-        const mobileLat = school.lat + 0.005;
-        setMapTarget([mobileLat, school.lng]);
-      } else {
-        setMapTarget([school.lat, school.lng]);
-      }
+      if (!school || !school.name) return;
 
-      // 2. Set the selected school state immediately
+      // 1. Sanitize the name into a secure, URL-friendly slug
+      const slug = school.name
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s-]/g, "")
+        .replace(/\s+/g, "-");
+
+      // 2. Navigation & State Update
+      navigate(`/catchment/${slug}`);
       setSelectedSchool(school);
 
-      // 3. Catchment Logic with extra validation
+      // 3. Position the Map
+      if (isMobile) {
+        const mobileLat = (school.lat || 0) + 0.005;
+        setMapTarget([mobileLat, school.lng || 0]);
+      } else {
+        setMapTarget([school.lat || 0, school.lng || 0]);
+      }
+
+      // 4. Catchment Logic with extra validation
       const code = normalizeCode(school.code);
 
       if (
@@ -1551,7 +1557,7 @@ function MapViewInner() {
         Object.keys(catchmentIndex).length === 0
       ) {
         console.warn("Catchment data is still initializing...");
-        setActiveCatchment(null); // Clear previous to avoid showing wrong area
+        setActiveCatchment(null);
         return;
       }
 
@@ -1568,7 +1574,16 @@ function MapViewInner() {
         }
       }, 50); // 50ms to let map engine reset
     },
-    [catchmentIndex, catchmentsReady, isMobile, navigate],
+    // All dependencies must be listed here in one single array
+    [
+      catchmentIndex,
+      catchmentsReady,
+      isMobile,
+      navigate,
+      setSelectedSchool,
+      setMapTarget,
+      setActiveCatchment,
+    ],
   );
 
   useEffect(() => {
