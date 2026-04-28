@@ -14,7 +14,7 @@ root.render(
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
-      .unregister("/sw.js")
+      .register("/sw.js")
       .then((registration) => {
         console.log("✓ PWA Service Worker registered:", registration.scope);
       })

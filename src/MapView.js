@@ -94,9 +94,19 @@ class MapErrorBoundary extends React.Component {
    ──────────────────────────────────────────────────────────────── */
 function ZoomHandler({ target }) {
   const map = useMap();
+
   useEffect(() => {
-    if (target) map.flyTo(target, 14, { duration: 1.5 });
+    // Check if target exists AND the map is fully loaded
+    if (target && map && typeof map.flyTo === 'function') {
+      try {
+        map.invalidateSize();
+        map.flyTo(target, 14, { duration: 1 });
+      } catch (e) {
+        console.warn("Zoom skipped to prevent crash:", e);
+      }
+    }
   }, [target, map]);
+
   return null;
 }
 
@@ -2241,6 +2251,7 @@ function MapViewInner() {
           <MapContainer
             center={[-33.86, 151.2]}
             zoom={11}
+            tap={false}
             style={{ height: "100%", width: "100%" }}
             zoomControl={false}
             onClick={handleMapClick}

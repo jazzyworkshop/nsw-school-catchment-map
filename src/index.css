@@ -1,3 +1,14 @@
+html, body, #root {
+  /* Use fill-available for better mobile height handling */
+  height: 100%;
+  height: -webkit-fill-available; 
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  /* position: fixed can sometimes break map initialization; 
+     stick to 100% height for the foundation */
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -5,26 +16,18 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overscroll-behavior-y: none; 
-  overflow: hidden;
+  
+  /* Critical for mobile map interactions */
   overscroll-behavior: none;
-  position: fixed;
   width: 100%;
-  height: 100%;
+  /* Removed position: fixed to allow the map engine to calculate viewport correctly */
 }
-
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-}
-html, body, #root {
-  height: 100%;
-  margin: 0;
-  padding: 0;
-}
-
 
 .map-container {
-  height: 100vh; 
+  height: 100%; 
   width: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  touch-action: none;
 }
