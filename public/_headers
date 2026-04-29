@@ -1,7 +1,11 @@
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://api.mapbox.com https://nominatim.openstreetmap.org; style-src 'self' 'unsafe-inline' https://api.mapbox.com https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://api.mapbox.com; connect-src 'self' https://api.mapbox.com https://*.tiles.mapbox.com https://nominatim.openstreetmap.org https://events.mapbox.com; font-src 'self' https://fonts.gstatic.com; worker-src 'self' blob:; object-src 'none';
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: geolocation=(self) 
-  */
+  X-Permitted-Cross-Domain-Policies: none
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.tile.openstreetmap.org; worker-src 'self' blob:; child-src blob:; connect-src 'self' https://*.cloudflare.com;
+
+# Specific rule for your data folder to ensure it's not cached too long
+/data/*
+  Cache-Control: public, max-age=3600
