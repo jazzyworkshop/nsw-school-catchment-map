@@ -96,43 +96,28 @@ function ZoomHandler({ target }) {
   const map = useMap();
 
   useEffect(() => {
-    // 1. Guard check for target and map existence
     if (target && map && typeof map.flyTo === "function") {
-      let refreshInterval;
-
       try {
-        // 2. STOP any existing animations and force-sync layers
+        // 1. Instantly kill any current movement/lag
         map.stop();
-        map.invalidateSize();
-        map.fire("viewreset"); // This "re-glues" the vectors to the map coordinates
 
-        // 3. Execute the smooth flyTo
+        // 2. One-time sync to fix any alignment before starting
+        map.invalidateSize();
+        map.fire("viewreset");
+
+        // 3. Let Leaflet handle the zoom at its natural speed
         map.flyTo(target, 14, {
-          duration: 1.2, // Slightly increased to give the renderer more time
+          duration: 0.8, // Faster duration feels snappier
           easeLinearity: 0.25,
-          noMoveStart: true,
         });
 
-        // 4. More frequent pulsing to keep the layers aligned during the move
-        refreshInterval = setInterval(() => {
+        // 4. Final sync only AFTER the move is done
+        map.once("moveend", () => {
           map.invalidateSize({ animate: false });
-        }, 50); // Faster pulse (50ms) for smoother tracking
+        });
       } catch (e) {
-        console.warn("Zoom skipped to prevent crash:", e);
+        console.warn("Zoom error:", e);
       }
-
-      // 5. Cleanup: stop the interval once the animation is finished
-      const timeoutId = setTimeout(() => {
-        if (refreshInterval) clearInterval(refreshInterval);
-        // Final sync at the end of the zoom
-        map.invalidateSize({ animate: false });
-      }, 1300);
-
-      // Clean up if the component unmounts or target changes mid-zoom
-      return () => {
-        if (refreshInterval) clearInterval(refreshInterval);
-        clearTimeout(timeoutId);
-      };
     }
   }, [target, map]);
 
