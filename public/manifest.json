@@ -1,6 +1,6 @@
 {
-  "short_name": "School Map",
-  "name": "Local School Map",
+  "short_name": "NSW Local School Map",
+  "name": "NSW School Catchment Area Map",
   "icons": [
     {
       "src": "favicon.ico",
