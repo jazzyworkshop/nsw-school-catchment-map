@@ -101,20 +101,22 @@ function ZoomHandler({ target }) {
       let refreshInterval;
 
       try {
-        // 2. Prepare the map for the new viewport
+        // 2. STOP any existing animations and force-sync layers
+        map.stop();
         map.invalidateSize();
+        map.fire("viewreset"); // This "re-glues" the vectors to the map coordinates
 
         // 3. Execute the smooth flyTo
         map.flyTo(target, 14, {
-          duration: 1,
+          duration: 1.2, // Slightly increased to give the renderer more time
           easeLinearity: 0.25,
           noMoveStart: true,
         });
 
-        // 4. Pulse the size check to keep the SVG "glued" during the zoom
+        // 4. More frequent pulsing to keep the layers aligned during the move
         refreshInterval = setInterval(() => {
           map.invalidateSize({ animate: false });
-        }, 100);
+        }, 50); // Faster pulse (50ms) for smoother tracking
       } catch (e) {
         console.warn("Zoom skipped to prevent crash:", e);
       }
@@ -122,7 +124,9 @@ function ZoomHandler({ target }) {
       // 5. Cleanup: stop the interval once the animation is finished
       const timeoutId = setTimeout(() => {
         if (refreshInterval) clearInterval(refreshInterval);
-      }, 1200);
+        // Final sync at the end of the zoom
+        map.invalidateSize({ animate: false });
+      }, 1300);
 
       // Clean up if the component unmounts or target changes mid-zoom
       return () => {

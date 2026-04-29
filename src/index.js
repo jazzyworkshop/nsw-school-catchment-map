@@ -14,16 +14,26 @@ root.render(
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
-      .unregister("/sw.js")
+      .register("/sw.js")
       .then((registration) => {
-        console.log("✓ PWA Service Worker registered:", registration.scope);
+        console.log("✓ PWA Service Worker active:", registration.scope);
+
+        registration.onupdatefound = () => {
+          const installingWorker = registration.installing;
+          if (installingWorker) {
+            installingWorker.onstatechange = () => {
+              if (installingWorker.state === "installed") {
+                if (navigator.serviceWorker.controller) {
+                  console.log("New content available; please refresh.");
+                }
+              }
+            };
+          }
+        };
       })
       .catch((error) => {
         console.error("PWA Service Worker registration failed:", error);
       });
   });
 }
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
 reportWebVitals();
