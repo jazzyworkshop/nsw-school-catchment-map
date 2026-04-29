@@ -96,14 +96,39 @@ function ZoomHandler({ target }) {
   const map = useMap();
 
   useEffect(() => {
-    // Check if target exists AND the map is fully loaded
-    if (target && map && typeof map.flyTo === 'function') {
+    // 1. Guard check for target and map existence
+    if (target && map && typeof map.flyTo === "function") {
+      let refreshInterval;
+
       try {
+        // 2. Prepare the map for the new viewport
         map.invalidateSize();
-        map.flyTo(target, 14, { duration: 1 });
+
+        // 3. Execute the smooth flyTo
+        map.flyTo(target, 14, {
+          duration: 1,
+          easeLinearity: 0.25,
+          noMoveStart: true,
+        });
+
+        // 4. Pulse the size check to keep the SVG "glued" during the zoom
+        refreshInterval = setInterval(() => {
+          map.invalidateSize({ animate: false });
+        }, 100);
       } catch (e) {
         console.warn("Zoom skipped to prevent crash:", e);
       }
+
+      // 5. Cleanup: stop the interval once the animation is finished
+      const timeoutId = setTimeout(() => {
+        if (refreshInterval) clearInterval(refreshInterval);
+      }, 1200);
+
+      // Clean up if the component unmounts or target changes mid-zoom
+      return () => {
+        if (refreshInterval) clearInterval(refreshInterval);
+        clearTimeout(timeoutId);
+      };
     }
   }, [target, map]);
 
@@ -2249,6 +2274,9 @@ function MapViewInner() {
 
           {/* MAP */}
           <MapContainer
+            zoomSnap={0.1}
+            zoomDelta={0.1}
+            wheelDebounceTime={10}
             center={[-33.86, 151.2]}
             zoom={11}
             tap={false}
@@ -2267,6 +2295,7 @@ function MapViewInner() {
               <GeoJSON
                 key={`active-${activeCatchment?.features?.[0]?.properties?.USE_ID || "none"}`}
                 data={activeCatchment}
+                smoothFactor={0}
                 style={{
                   color: "#1E88E5",
                   weight: 3,
