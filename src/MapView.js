@@ -2274,7 +2274,8 @@ function MapViewInner() {
 
           {/* MAP */}
           <MapContainer
-            zoomSnap={0.1}
+            preferCanvas={true}
+            zoomSnap={0}
             zoomDelta={0.1}
             wheelDebounceTime={10}
             center={[-33.86, 151.2]}
