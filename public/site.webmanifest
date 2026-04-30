@@ -1,6 +1,7 @@
 {
-  "name": "Local School Map",
-  "short_name": "LMS",
+  "name": "NSW School Catchment Area Map",
+  "short_name": "NSW School Map",
+  "description": "The fastest, ad-free way to find NSW school catchment areas.",
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",
