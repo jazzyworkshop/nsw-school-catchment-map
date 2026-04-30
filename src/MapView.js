@@ -98,23 +98,30 @@ function ZoomHandler({ target }) {
   useEffect(() => {
     if (target && map && typeof map.flyTo === "function") {
       try {
-        // 1. Instantly kill any current movement/lag
         map.stop();
-
-        // 2. One-time sync to fix any alignment before starting
         map.invalidateSize();
         map.fire("viewreset");
 
-        // 3. Let Leaflet handle the zoom at its natural speed
+        const isMobile = window.innerWidth <= 768;
+
+        // 1. Perform the initial FlyTo
         map.flyTo(target, 14, {
-          duration: 0.8, // Faster duration feels snappier
+          duration: 0.8,
           easeLinearity: 0.25,
         });
 
-        // 4. Final sync only AFTER the move is done
-        map.once("moveend", () => {
-          map.invalidateSize({ animate: false });
-        });
+        if (isMobile) {
+          map.once("moveend", () => {
+            // Negative Y value pushes dot down
+            // Positive Y value pushes dot UP
+            map.panBy([0, 150], { animate: true, duration: 0.5 });
+            map.invalidateSize({ animate: false });
+          });
+        } else {
+          map.once("moveend", () => {
+            map.invalidateSize({ animate: false });
+          });
+        }
       } catch (e) {
         console.warn("Zoom error:", e);
       }
@@ -906,9 +913,9 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
         <motion.div
           drag="y"
           dragConstraints={{ top: 0, bottom: 0 }}
-          dragElastic={0.1}
+          dragElastic={0.08}
           dragDirectionLock
-          dragMomentum={false}
+          dragMomentum={true}
           dragTransition={{
             min: 0,
             max: 0,
@@ -921,8 +928,8 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
           animate={controls}
           exit="closed"
           onDragEnd={(e, info) => {
-            const swipeThreshold = 20;
-            const velocityThreshold = 50;
+            const swipeThreshold = 10;
+            const velocityThreshold = 30;
 
             if (
               info.velocity.y > velocityThreshold ||
@@ -952,7 +959,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
             overflow: "hidden",
             boxShadow: "0 -8px 30px rgba(0,0,0,0.08)",
             // 1. CHANGE: Allow 'pan-y' so the browser can distinguish taps from scrolls
-            touchAction: "pan-y",
+            touchAction: "none",
             willChange: "transform",
           }}
         >
