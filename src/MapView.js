@@ -1030,29 +1030,50 @@ function CardBody({ school, typeColor, onClose, isMobile }) {
     school.selective && !["No", ""].includes(school.selective)
       ? school.selective
       : "No";
-  
+
   // Note: Ensure SELECTIVE_LABELS is defined in your outer scope or imports
-  const selectiveInfo = (typeof SELECTIVE_LABELS !== 'undefined' && SELECTIVE_LABELS[selectiveDisplay]) || {
+  const selectiveInfo = (typeof SELECTIVE_LABELS !== "undefined" &&
+    SELECTIVE_LABELS[selectiveDisplay]) || {
     label: selectiveDisplay,
     color: "#666",
     bg: "transparent",
   };
 
   const enrolmentDisplay = school.enrolment
-    ? `${Math.round(school.enrolment).toLocaleString()} students`
+    ? `${Math.round(school.enrolment).toLocaleString()} Students`
     : "n/a";
 
   const getIcseaInfo = (value) => {
-    if (!value) return { label: "n/a", color: "#f5f5f5", textColor: "#888", val: "n/a" };
+    if (!value)
+      return { label: "n/a", color: "#f5f5f5", textColor: "#888", val: "n/a" };
     const num = Number(value);
-    if (num >= 1200) return { label: "Very High", color: "#006400", textColor: "white", val: num }; 
-    if (num >= 1100) return { label: "High", color: "#4CAF50", textColor: "white", val: num };      
-    if (num >= 900)  return { label: "Average", color: "#FFD700", textColor: "black", val: num };   
-    if (num >= 700)  return { label: "Low", color: "#FF8C00", textColor: "white", val: num };       
-    return { label: "Very Low", color: "#D32F2F", textColor: "white", val: num };                  
+    if (num >= 1200)
+      return {
+        label: "Very High",
+        color: "#006400",
+        textColor: "white",
+        val: num,
+      };
+    if (num >= 1100)
+      return { label: "High", color: "#4CAF50", textColor: "white", val: num };
+    if (num >= 900)
+      return {
+        label: "Average",
+        color: "#FFD700",
+        textColor: "black",
+        val: num,
+      };
+    if (num >= 700)
+      return { label: "Low", color: "#FF8C00", textColor: "white", val: num };
+    return {
+      label: "Very Low",
+      color: "#D32F2F",
+      textColor: "white",
+      val: num,
+    };
   };
-  const icsea = getIcseaInfo(ICSEA_Value);
- 
+  const icsea = getIcseaInfo(school.icsea);
+
   const infoRowStyle = {
     display: "flex",
     flexDirection: "column",
@@ -1209,13 +1230,17 @@ function CardBody({ school, typeColor, onClose, isMobile }) {
           <span style={valueStyle}>{enrolmentDisplay}</span>
         </div>
 
-        {/* --- ADDED ICSEA CONTEXT ROW --- */}
         <div style={infoRowStyle}>
-          <span style={labelStyle}>ICSEA Context</span>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "2px" }}>
-            <span style={valueStyle}>
-              Community Socio-Educational Advantage: {icsea.val}
-            </span>
+          <span style={labelStyle}>School Community Advantage (ICSEA)</span>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginTop: "2px",
+            }}
+          >
+            <span style={valueStyle}>ICSEA Score: {icsea.val}</span>
             <span
               style={{
                 fontSize: "10px",
@@ -1436,8 +1461,10 @@ function MapViewInner() {
 
     async function loadData() {
       try {
+        setLoading(true);
         const response = await fetch("/schools_master.json");
         const data = await response.json();
+
         const mapped = (data.records || [])
           .map((row) => ({
             code: String(row[0] || ""),
@@ -1446,6 +1473,7 @@ function MapViewInner() {
             suburb: row[4] || "",
             postcode: row[5] || "",
             enrolment: row[10] || 0,
+            icsea: row[13] || null,
             level: row[14] || "Other",
             selective: row[15] || "No",
             oc: row[16] || "N",
@@ -1454,6 +1482,7 @@ function MapViewInner() {
             lng: parseFloat(row[41]),
           }))
           .filter((s) => !isNaN(s.lat) && !isNaN(s.lng));
+
         setSchools(mapped);
       } catch (e) {
         console.error("Data error", e);
@@ -1461,6 +1490,7 @@ function MapViewInner() {
         setLoading(false);
       }
     }
+
     loadData();
     return () => window.removeEventListener("resize", handleResize);
   }, []);
