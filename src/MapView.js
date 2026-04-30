@@ -1030,15 +1030,29 @@ function CardBody({ school, typeColor, onClose, isMobile }) {
     school.selective && !["No", ""].includes(school.selective)
       ? school.selective
       : "No";
-  const selectiveInfo = SELECTIVE_LABELS[selectiveDisplay] || {
+  
+  // Note: Ensure SELECTIVE_LABELS is defined in your outer scope or imports
+  const selectiveInfo = (typeof SELECTIVE_LABELS !== 'undefined' && SELECTIVE_LABELS[selectiveDisplay]) || {
     label: selectiveDisplay,
     color: "#666",
     bg: "transparent",
   };
+
   const enrolmentDisplay = school.enrolment
     ? `${Math.round(school.enrolment).toLocaleString()} students`
     : "n/a";
 
+  const getIcseaInfo = (value) => {
+    if (!value) return { label: "n/a", color: "#f5f5f5", textColor: "#888", val: "n/a" };
+    const num = Number(value);
+    if (num >= 1200) return { label: "Very High", color: "#006400", textColor: "white", val: num }; 
+    if (num >= 1100) return { label: "High", color: "#4CAF50", textColor: "white", val: num };      
+    if (num >= 900)  return { label: "Average", color: "#FFD700", textColor: "black", val: num };   
+    if (num >= 700)  return { label: "Low", color: "#FF8C00", textColor: "white", val: num };       
+    return { label: "Very Low", color: "#D32F2F", textColor: "white", val: num };                  
+  };
+  const icsea = getIcseaInfo(ICSEA_Value);
+ 
   const infoRowStyle = {
     display: "flex",
     flexDirection: "column",
@@ -1070,17 +1084,16 @@ function CardBody({ school, typeColor, onClose, isMobile }) {
       <div
         style={{
           borderTop: `4px solid ${typeColor}`,
-          padding: isMobile ? "12px 16px" : "14px 18px", // Slightly tighter on mobile
+          padding: isMobile ? "12px 16px" : "14px 18px",
           borderBottom: "1px solid #f0f0f0",
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "space-between",
           gap: "12px",
           backgroundColor: "white",
-          borderRadius: "24px 24px 0 0", // Matches your card's outer radius
+          borderRadius: "24px 24px 0 0",
         }}
       >
-        {/* Text Container */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <a
             href={schoolWebsite}
@@ -1089,7 +1102,7 @@ function CardBody({ school, typeColor, onClose, isMobile }) {
             style={{
               color: "#002b5c",
               fontSize: isMobile ? "15px" : "17px",
-              fontWeight: 800, // Heavier weight for better hierarchy
+              fontWeight: 800,
               textDecoration: "none",
               lineHeight: 1.2,
               display: "-webkit-box",
@@ -1117,7 +1130,7 @@ function CardBody({ school, typeColor, onClose, isMobile }) {
           <div
             style={{
               fontSize: "12px",
-              color: "#666", // Slightly darker for better readability
+              color: "#666",
               marginTop: "4px",
               fontWeight: 500,
               whiteSpace: "nowrap",
@@ -1129,12 +1142,11 @@ function CardBody({ school, typeColor, onClose, isMobile }) {
           </div>
         </div>
 
-        {/* Close Button - Larger touch target for mobile */}
         <button
           onClick={onClose}
           style={{
             border: "none",
-            background: "#f5f5f5", // Subtle background makes it easier to spot
+            background: "#f5f5f5",
             borderRadius: "50%",
             width: "30px",
             height: "30px",
@@ -1144,7 +1156,7 @@ function CardBody({ school, typeColor, onClose, isMobile }) {
             fontSize: "16px",
             cursor: "pointer",
             color: "#888",
-            flexShrink: 0, // Prevents the button from squishing
+            flexShrink: 0,
             touchAction: "manipulation",
           }}
         >
@@ -1196,6 +1208,31 @@ function CardBody({ school, typeColor, onClose, isMobile }) {
           <span style={labelStyle}>Enrolment</span>
           <span style={valueStyle}>{enrolmentDisplay}</span>
         </div>
+
+        {/* --- ADDED ICSEA CONTEXT ROW --- */}
+        <div style={infoRowStyle}>
+          <span style={labelStyle}>ICSEA Context</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "2px" }}>
+            <span style={valueStyle}>
+              Community Socio-Educational Advantage: {icsea.val}
+            </span>
+            <span
+              style={{
+                fontSize: "10px",
+                fontWeight: "800",
+                padding: "2px 6px",
+                borderRadius: "4px",
+                backgroundColor: icsea.color,
+                color: icsea.textColor,
+                textTransform: "uppercase",
+              }}
+            >
+              {icsea.label}
+            </span>
+          </div>
+        </div>
+        {/* ------------------------------- */}
+
         <div style={infoRowStyle}>
           <span style={labelStyle}>Academic results & programs</span>
           <span style={valueStyle}>
