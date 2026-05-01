@@ -1933,10 +1933,13 @@ function MapViewInner() {
     [schools],
   );
 
+  // 1. Setup Fuse for Suburbs
   const fuseSuburbs = useMemo(() => {
-    const uniqueSuburbs = [...new Set(schools.map((s) => s.suburb))].map(
-      (sub) => ({ name: sub }),
-    );
+    // Ensure schools exists and map unique suburb names
+    const uniqueSuburbs = [...new Set(schools.map((s) => s.suburb))]
+      .filter(Boolean)
+      .map((sub) => ({ name: sub }));
+
     return new Fuse(uniqueSuburbs, {
       keys: ["name"],
       threshold: 0.3,
@@ -1946,10 +1949,11 @@ function MapViewInner() {
 
   // 2. Fuzzy Search Logic
   const schoolResults = useMemo(() => {
-    if (searchTerm.length < 2) return [];
+    // IMPORTANT: Use displayTerm here so the search reacts to typing
+    if (!displayTerm || displayTerm.length < 2) return [];
 
     const suburbMatches = fuseSuburbs
-      .search(searchTerm)
+      .search(displayTerm)
       .slice(0, 5)
       .map((result) => ({
         type: "suburb",
@@ -1958,7 +1962,7 @@ function MapViewInner() {
       }));
 
     const schoolMatches = fuseSchools
-      .search(searchTerm)
+      .search(displayTerm)
       .slice(0, 10)
       .map((result) => ({
         ...result.item,
@@ -1966,10 +1970,9 @@ function MapViewInner() {
         label: `🎓 ${result.item.name}`,
       }));
 
+    // Combine them
     return [...suburbMatches, ...schoolMatches];
-  }, [searchTerm, fuseSchools, fuseSuburbs]);
-
-  const combinedResults = [...schoolResults, ...addressResults];
+  }, [displayTerm, fuseSchools, fuseSuburbs]);
 
   const filteredSchools = useMemo(() => {
     return schools.filter((s) => {
@@ -2118,20 +2121,18 @@ function MapViewInner() {
                 type="text"
                 placeholder="Search schools, suburbs or address..."
                 aria-label="Search for NSW schools and catchment zones by address or name"
-                value={displayTerm} // Correct
+                value={displayTerm}
                 onChange={(e) => {
                   const rawValue = e.target.value;
-
                   const cleanValue = rawValue.replace(/[<>"{}[\]]/g, "");
 
-                  // Update the visual text box instantly
+                  // Update visual text
                   setDisplayTerm(cleanValue);
 
-                  // Show the results dropdown if the user has typed at least 2 characters
+                  // Handle dropdown visibility
                   if (cleanValue.length >= 2) {
                     setShowResults(true);
                   } else {
-                    // Optional: Hide results if they backspace to 1 or 0 characters
                     setShowResults(false);
                   }
                 }}
@@ -2155,43 +2156,52 @@ function MapViewInner() {
             </div>
 
             {/* Dropdown Logic */}
-            {showResults && (combinedResults.length > 0 || addressLoading) && (
-              <ul style={styles.searchDropdown}>
-                {schoolResults.length > 0 && (
-                  <li style={styles.dropdownHeader}>Schools & Suburbs</li>
-                )}
-                {schoolResults.map((item, i) => (
-                  <li
-                    key={`school-${i}`}
-                    className="search-item"
-                    onClick={() => handleSelect(item)}
-                    style={styles.searchItem}
-                  >
-                    {item.label}
-                  </li>
-                ))}
+            {showResults &&
+              (schoolResults.length > 0 ||
+                addressResults.length > 0 ||
+                addressLoading) && (
+                <ul style={styles.searchDropdown}>
+                  {/* Combined Schools & Suburbs Section */}
+                  {schoolResults.length > 0 && (
+                    <>
+                      <li style={styles.dropdownHeader}>Schools & Suburbs</li>
+                      {schoolResults.map((item, i) => (
+                        <li
+                          key={`school-${i}`}
+                          className="search-item"
+                          onClick={() => handleSelect(item)}
+                          style={styles.searchItem}
+                        >
+                          {item.label}
+                        </li>
+                      ))}
+                    </>
+                  )}
 
-                {addressResults.length > 0 && (
-                  <li style={styles.dropdownHeader}>Addresses</li>
-                )}
-                {addressLoading && (
-                  <li style={{ ...styles.searchItem, color: "#777" }}>
-                    Searching addresses...
-                  </li>
-                )}
-                {!addressLoading &&
-                  addressResults.map((item, i) => (
-                    <li
-                      key={`addr-${i}`}
-                      className="search-item"
-                      onClick={() => handleAddressSelect(item)}
-                      style={styles.searchItem}
-                    >
-                      📍 {item.label}
+                  {/* Address Section */}
+                  {addressResults.length > 0 && (
+                    <li style={styles.dropdownHeader}>Addresses</li>
+                  )}
+
+                  {addressLoading && (
+                    <li style={{ ...styles.searchItem, color: "#777" }}>
+                      Searching addresses...
                     </li>
-                  ))}
-              </ul>
-            )}
+                  )}
+
+                  {!addressLoading &&
+                    addressResults.map((item, i) => (
+                      <li
+                        key={`addr-${i}`}
+                        className="search-item"
+                        onClick={() => handleAddressSelect(item)}
+                        style={styles.searchItem}
+                      >
+                        📍 {item.label}
+                      </li>
+                    ))}
+                </ul>
+              )}
           </div>
 
           {/* Address catchment toggle (Primary / Secondary) */}
