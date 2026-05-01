@@ -1746,7 +1746,16 @@ function MapViewInner() {
 
         const res = await fetch(url, {
           signal: controller.signal,
-          headers: { "Accept-Language": "en" },
+          method: "GET",
+
+          mode: "cors", // Explicitly ask for Cross-Origin Resource Sharing
+          cache: "no-cache", // Tells the Service Worker NOT to use a stale/broken cache
+          credentials: "omit", // Nominatim doesn't need cookies; this reduces overhead
+
+          headers: {
+            "Accept-Language": "en",
+            Accept: "application/json",
+          },
         });
 
         if (!res.ok) throw new Error("Nominatim error");
