@@ -6,7 +6,7 @@
   /*
   /*
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: *.openstreetmap.org; connect-src 'self' https://nominatim.openstreetmap.org https://*.tiles.mapbox.com https://api.mapbox.com;
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: *.openstreetmap.org; connect-src 'self' https://nominatim.openstreetmap.org https://*.openstreetmap.org https://*.tiles.mapbox.com https://api.mapbox.com *.openstreetmap.org *.tile.openstreetmap.org *.tile.osmosnimki.ru;
 # Specific rule for your data folder to ensure it's not cached too long
 /data/*
   Cache-Control: public, max-age=3600
