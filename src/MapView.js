@@ -6,6 +6,7 @@ import {
   GeoJSON,
   useMap,
   ZoomControl,
+  Tooltip,
   Marker,
 } from "react-leaflet";
 import L from "leaflet";
@@ -17,12 +18,16 @@ import Fuse from "fuse.js";
 import { motion, useAnimation, AnimatePresence } from "framer-motion";
 
 /* ────────────────────────────────────────────────────────────────
-   LEAFLET ICON
+   MAP PIN ICON
    ──────────────────────────────────────────────────────────────── */
 
 let DefaultIcon = L.icon({
-  iconUrl: "/marker-icon.png", // Make sure these paths are correct!
+  iconUrl: "/marker-icon.png",
   shadowUrl: "/marker-shadow.png",
+  iconSize: [25, 41], // Standard size
+  iconAnchor: [12, 41], // Points the tip of the pin to the lat/lng
+  popupAnchor: [1, -34], // Where the school name popup appears
+  shadowSize: [41, 41],
 });
 
 L.Marker.prototype.options.icon = DefaultIcon;
@@ -1705,7 +1710,6 @@ function MapViewInner() {
     // Only run this if we have a slug in the URL and our schools list has loaded
     if (schoolSlug && schools.length > 0) {
       // Find the school that matches the URL slug
-      // We convert the school name to a slug just like we did in handleSchoolClick
       const targetSchool = schools.find(
         (s) => s.name.toLowerCase().replace(/\s+/g, "-") === schoolSlug,
       );
@@ -2056,19 +2060,7 @@ function MapViewInner() {
           from { transform: translateX(100%); }
           to { transform: translateX(0); }
         }
-        .search-item:hover { background: #f5f7ff !important; }
-        
-        /* Smooth tooltip for map markers */
-        .school-hover-tooltip {
-          background: rgba(0, 0, 0, 0.85) !important;
-          color: white !important;
-          border: none !important;
-          border-radius: 6px !important;
-          font-size: 12px !important;
-          font-weight: 600 !important;
-          padding: 6px 10px !important;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
-        }
+        .search-item:hover { background: #f5f7ff !important; }               
       `}</style>
       <div style={{ ...styles.appShell, willChange: "transform" }}>
         {/* HEADER */}
@@ -2498,38 +2490,26 @@ function MapViewInner() {
                     fillOpacity:
                       isForced && !isSelected ? 0.5 : isSelected ? 1 : 0.8,
                     dashArray: isForced && !isSelected ? "4 3" : undefined,
+                    interactive: true, // Ensures the marker catches mouse events
                   }}
                   eventHandlers={{
                     click: (e) => {
-                      if (e.originalEvent) {
-                        e.originalEvent.cancelBubble = true;
-                      }
+                      if (e.originalEvent) e.originalEvent.cancelBubble = true;
                       handleSchoolClick(school);
                       setShowResults(false);
                     },
-                    mouseover: (e) => {
-                      const layer = e?.target;
-                      if (!layer || !layer._map || !layer._path) return;
-                      try {
-                        layer
-                          .bindTooltip(shortName, {
-                            permanent: false,
-                            direction: "top",
-                            offset: [0, -6],
-                            className: "school-hover-tooltip",
-                          })
-                          .openTooltip();
-                      } catch {}
-                    },
-                    mouseout: (e) => {
-                      const layer = e?.target;
-                      if (!layer || !layer._map) return;
-                      try {
-                        layer.unbindTooltip();
-                      } catch {}
-                    },
                   }}
-                />
+                >
+                  <Tooltip
+                    direction="top"
+                    offset={[0, -10]}
+                    opacity={1}
+                    sticky={true}
+                    className="school-hover-tooltip"
+                  >
+                    {shortName}
+                  </Tooltip>
+                </CircleMarker>
               );
             })}
           </MapContainer>
