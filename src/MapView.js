@@ -104,7 +104,7 @@ function ZoomHandler({ target }) {
     if (target && map && typeof map.flyTo === "function") {
       try {
         map.stop(); // Stop any current movement
-        
+
         const isMobile = window.innerWidth <= 768;
         let finalTarget = [...target];
 
@@ -117,15 +117,15 @@ function ZoomHandler({ target }) {
         }
 
         map.flyTo(finalTarget, 14, {
-          duration: 0.8,
-          easeLinearity: 0.25,
+          duration: 0.4,
+          easeLinearity: 0.7,
+          noMoveStart: true,
         });
 
         // Ensure the map knows its size after the movement
         map.once("moveend", () => {
           map.invalidateSize({ animate: false });
         });
-
       } catch (e) {
         console.warn("Zoom error:", e);
       }
