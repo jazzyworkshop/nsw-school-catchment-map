@@ -103,30 +103,29 @@ function ZoomHandler({ target }) {
   useEffect(() => {
     if (target && map && typeof map.flyTo === "function") {
       try {
-        map.stop();
-        map.invalidateSize();
-        map.fire("viewreset");
-
+        map.stop(); // Stop any current movement
+        
         const isMobile = window.innerWidth <= 768;
+        let finalTarget = [...target];
 
-        // 1. Perform the initial FlyTo
-        map.flyTo(target, 14, {
+        if (isMobile) {
+          // SIMPLE NUDGE:
+          // map to center on a point slightly SOUTH of the school.
+          // This forces the actual school dot to appear higher up.
+          // 0.008 is roughly the height of the 'peek' area at zoom 14.
+          finalTarget[0] = finalTarget[0] - 0.008;
+        }
+
+        map.flyTo(finalTarget, 14, {
           duration: 0.8,
           easeLinearity: 0.25,
         });
 
-        if (isMobile) {
-          map.once("moveend", () => {
-            // Negative Y value pushes dot down
-            // Positive Y value pushes dot UP
-            map.panBy([0, 150], { animate: true, duration: 0.5 });
-            map.invalidateSize({ animate: false });
-          });
-        } else {
-          map.once("moveend", () => {
-            map.invalidateSize({ animate: false });
-          });
-        }
+        // Ensure the map knows its size after the movement
+        map.once("moveend", () => {
+          map.invalidateSize({ animate: false });
+        });
+
       } catch (e) {
         console.warn("Zoom error:", e);
       }
