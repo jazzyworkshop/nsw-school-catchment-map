@@ -7,6 +7,7 @@ import {
   useMap,
   ZoomControl,
   Tooltip,
+  useMapEvents,
   Marker,
 } from "react-leaflet";
 import L from "leaflet";
@@ -135,6 +136,24 @@ function ZoomHandler({ target }) {
   return null;
 }
 
+function MapClickHandler({ onMapClick }) {
+  useMapEvents({
+    click: (e) => {
+      // Access Leaflet's native event manager directly
+      const nativeEvent = e.originalEvent;
+
+      // If the user clicked on a path, vector, marker, or SVG overlay,
+      // DO NOT clear. Leaflet attaches 'leaflet-interactive' to these elements.
+      if (nativeEvent.target.classList.contains("leaflet-interactive")) {
+        return;
+      }
+
+      // Otherwise, it's a pure background tap! Safely clear everything.
+      onMapClick();
+    },
+  });
+  return null;
+}
 /* ────────────────────────────────────────────────────────────────
    CONSTANTS
    ──────────────────────────────────────────────────────────────── */
@@ -1566,27 +1585,34 @@ function MapViewInner() {
     if (selectedSchool && selectedSchool.name) {
       document.title = `${selectedSchool.name} Catchment Map | Local School Map`;
     } else {
-      document.title = `NSW School Catchment & Zoning Map | Local School Map`;
+      document.title = `NSW School Catchment Areas Map | Search zones by Suburb, School or Address`;
     }
   }, [selectedSchool]);
 
   // Clear everything (used by clear pill, search clear, and map click)
   const handleClearAll = useCallback(() => {
+    // 1. Shut dropdowns
+    setShowResults(false);
+
+    // 2. Clear out all overlay vectors and selections
     setActiveCatchment(null);
     setSelectedSchool(null);
     setSearchForcedSchool(null);
+    setPrimaryCatchmentFeature(null);
+    setSecondaryCatchmentFeature(null);
+    setCatchmentView("primary");
     setDisplayTerm("");
     setSearchTerm("");
     setAddressMarker(null);
     setAddressResults([]);
     setAddressLoading(false);
-    setShowResults(false);
-    setPrimaryCatchmentFeature(null);
-    setSecondaryCatchmentFeature(null);
-    setCatchmentView("primary");
 
-    // Clean URL back to home
-    navigate("/");
+    // 3. Defer navigation to the next macro-task tick to let Leaflet settle
+    setTimeout(() => {
+      if (typeof navigate === "function") {
+        navigate("/");
+      }
+    }, 10);
   }, [navigate]);
 
   // 2. Clear filters logic
@@ -1597,35 +1623,6 @@ function MapViewInner() {
     setSelectiveFilter("all");
     setSearchForcedSchool(null);
   }, []);
-
-  // Map click: click outside catchment clears; inside does nothing
-  const handleMapClick = useCallback(
-    (e) => {
-      setShowResults(false);
-
-      const { lat, lng } = e.latlng;
-
-      if (!activeCatchment) return;
-
-      const insidePrimary = primaryCatchmentFeature
-        ? pointInFeature(lat, lng, primaryCatchmentFeature)
-        : false;
-
-      const insideSecondary = secondaryCatchmentFeature
-        ? pointInFeature(lat, lng, secondaryCatchmentFeature)
-        : false;
-
-      if (insidePrimary || insideSecondary) return;
-
-      handleClearAll();
-    },
-    [
-      primaryCatchmentFeature,
-      secondaryCatchmentFeature,
-      activeCatchment,
-      handleClearAll,
-    ],
-  );
 
   // School click → use index for instant catchment lookup
   const handleSchoolClick = useCallback(
@@ -2092,7 +2089,7 @@ function MapViewInner() {
               Local School Map
             </h1>
             <p style={styles.headerSub}>
-              NSW School Catchment Areas (Unofficial Zoning Tool)
+              NSW School Catchment Areas | Find your local school zone instantly
             </p>
           </div>
           {isMobile && (
@@ -2281,7 +2278,7 @@ function MapViewInner() {
           )}
 
           {/* Filter warning / clear pill */}
-          {searchForcedSchool ? (
+          {searchForcedSchool && (
             <div
               style={{
                 position: "absolute",
@@ -2302,47 +2299,6 @@ function MapViewInner() {
             >
               ⚠️ This school is hidden by your current filters
             </div>
-          ) : (
-            activeCatchment && (
-              <button
-                onClick={() => {
-                  handleClearAll();
-                  navigate("/");
-                }}
-                style={{
-                  position: "absolute",
-                  top: "60px", // Sits just below your header
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  zIndex: 2000,
-                  backgroundColor: "#e63946", // Modern red
-                  color: "white",
-                  border: "none",
-                  padding: "8px 18px",
-                  borderRadius: "25px",
-                  fontSize: "11px",
-                  fontWeight: "700",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  boxShadow: "0 4px 15px rgba(230, 57, 70, 0.3)",
-                  transition: "all 0.2s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#c12a35";
-                  e.currentTarget.style.transform =
-                    "translateX(-50%) scale(1.05)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "#e63946";
-                  e.currentTarget.style.transform = "translateX(-50%) scale(1)";
-                }}
-              >
-                <span style={{ fontSize: "14px", lineHeight: 0 }}>✕</span>
-                CLEAR SELECTION
-              </button>
-            )
           )}
 
           {/* MAP */}
@@ -2356,8 +2312,10 @@ function MapViewInner() {
             tap={false}
             style={{ height: "100%", width: "100%" }}
             zoomControl={false}
-            onClick={handleMapClick}
           >
+            {/* Add the new native listener directly here under the container */}
+            <MapClickHandler onMapClick={handleClearAll} />
+
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               attribution="&copy; OpenStreetMap contributors"
@@ -2393,16 +2351,23 @@ function MapViewInner() {
                     } catch {}
                   };
 
+                  const handleFeatureClick = (e) => {
+                    if (e && e.originalEvent) {
+                      L.DomEvent.stopPropagation(e);
+                    }
+                  };
+
                   layer.on({
                     mouseover: handleMouseOver,
                     mouseout: handleMouseOut,
+                    click: handleFeatureClick,
                   });
 
-                  // 🔥 CRITICAL: cleanup when layer is removed
                   layer.on("remove", () => {
                     try {
                       layer.off("mouseover", handleMouseOver);
                       layer.off("mouseout", handleMouseOut);
+                      layer.off("click", handleFeatureClick);
                     } catch {}
                   });
                 }}
@@ -2412,48 +2377,49 @@ function MapViewInner() {
             {ENABLE_FUTURE_ZONES && showFuture && futureCatchments &&
               /* prettier-ignore */
               <GeoJSON
-    key={"future-layer-" + showFuture + "-" + (futureCatchments?.features?.length || 0)}
-    data={futureCatchments}
-    style={{
-      color: "#FF8C00",
-      weight: 2.5,
-      dashArray: "8, 5",
-      fillOpacity: 0.08,
-      fillColor: "#FF8C00",
-    }}
-    onEachFeature={(feature, layer) => {
-      if (!layer || !feature.properties) return;
-      const schoolName = feature.properties.USE_DESC || "Future Zone";
-      try {
-        layer.bindTooltip("Future: " + schoolName, {
-          permanent: false,
-          sticky: true,
-          className: "future-tooltip",
-        });
-      } catch (e) {}
-
-      const safeSetStyle = (style) => {
-        if (!layer || !layer._map || !layer.setStyle) return;
-        try { layer.setStyle(style); } catch (err) {}
-      };
-
-      const handleMouseOver = () => safeSetStyle({ weight: 3.5, color: "#cc6600", fillOpacity: 0.2 });
-      const handleMouseOut = () => safeSetStyle({ weight: 2.5, color: "#FF8C00", fillOpacity: 0.08 });
-      const handleClick = (e) => {
-        if (e.originalEvent) e.originalEvent.stopPropagation();
-        if (layer._map && layer.getBounds) layer._map.fitBounds(layer.getBounds(), { padding: [40, 40] });
-      };
-
-      layer.on({ mouseover: handleMouseOver, mouseout: handleMouseOut, click: handleClick });
-      layer.on("remove", () => {
+      key={"future-layer-" + showFuture + "-" + (futureCatchments?.features?.length || 0)}
+      data={futureCatchments}
+      style={{
+        color: "#FF8C00",
+        weight: 2.5,
+        dashArray: "8, 5",
+        fillOpacity: 0.08,
+        fillColor: "#FF8C00",
+      }}
+      onEachFeature={(feature, layer) => {
+        if (!layer || !feature.properties) return;
+        const schoolName = feature.properties.USE_DESC || "Future Zone";
         try {
-          layer.off("mouseover", handleMouseOver);
-          layer.off("mouseout", handleMouseOut);
-          layer.off("click", handleClick);
+          layer.bindTooltip("Future: " + schoolName, {
+            permanent: false,
+            sticky: true,
+            className: "future-tooltip",
+          });
         } catch (e) {}
-      });
-    }}
-  />}
+
+        const safeSetStyle = (style) => {
+          if (!layer || !layer._map || !layer.setStyle) return;
+          try { layer.setStyle(style); } catch (err) {}
+        };
+
+        const handleMouseOver = () => safeSetStyle({ weight: 3.5, color: "#cc6600", fillOpacity: 0.2 });
+        const handleMouseOut = () => safeSetStyle({ weight: 2.5, color: "#FF8C00", fillOpacity: 0.08 });
+        const handleClick = (e) => {
+          if (e.originalEvent) e.originalEvent.stopPropagation();
+          if (layer._map && layer.getBounds) layer._map.fitBounds(layer.getBounds(), { padding: [40, 40] });
+        };
+
+        layer.on({ mouseover: handleMouseOver, mouseout: handleMouseOut, click: handleClick });
+        layer.on("remove", () => {
+          try {
+            layer.off("mouseover", handleMouseOver);
+            layer.off("mouseout", handleMouseOut);
+            layer.off("click", handleClick);
+          } catch (e) {}
+        });
+      }}
+    />}
+
             {/* Address marker */}
             {addressMarker && (
               <Marker position={[addressMarker.lat, addressMarker.lng]} />
@@ -2489,7 +2455,7 @@ function MapViewInner() {
                     fillOpacity:
                       isForced && !isSelected ? 0.5 : isSelected ? 1 : 0.8,
                     dashArray: isForced && !isSelected ? "4 3" : undefined,
-                    interactive: true, // Ensures the marker catches mouse events
+                    interactive: true,
                   }}
                   eventHandlers={{
                     click: (e) => {
