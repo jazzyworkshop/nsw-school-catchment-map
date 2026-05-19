@@ -1801,6 +1801,7 @@ function MapViewInner() {
 
   const handleSelect = (item) => {
     setSearchTerm(item.name);
+    setDisplayTerm(item.name);
     setShowResults(false);
     setAddressMarker(null);
     setPrimaryCatchmentFeature(null);
@@ -1846,6 +1847,7 @@ function MapViewInner() {
 
   const handleAddressSelect = async (item) => {
     setSearchTerm(item.name);
+    setDisplayTerm(item.name);
     setShowResults(false);
     setSearchForcedSchool(null);
     setSelectedSchool(null);
