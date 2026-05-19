@@ -40,19 +40,23 @@ input[type="search"]::-webkit-search-cancel-button {
 }
 
 /* School name hover tooltip on map dots */
+/* In App.css */
 .school-hover-tooltip {
-  background: rgba(0, 0, 0, 0.78) !important;
+  background: rgba(0, 0, 0, 0.85) !important; /* Slightly darker for better contrast */
   color: white !important;
   border: none !important;
   border-radius: 7px !important;
   font-size: 12px !important;
   font-weight: 600 !important;
-  padding: 4px 9px !important;
+  padding: 6px 10px !important;
   white-space: nowrap !important;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.25) !important;
+  pointer-events: none !important; /* Crucial: stops the tooltip from flickering */
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
 }
+
+/* This styles the little arrow at the bottom of the bubble */
 .school-hover-tooltip::before {
-  border-top-color: rgba(0, 0, 0, 0.78) !important;
+  border-top-color: rgba(0, 0, 0, 0.85) !important;
 }
 
 /* Prevent Leaflet popups being triggered (we use our own card) */
