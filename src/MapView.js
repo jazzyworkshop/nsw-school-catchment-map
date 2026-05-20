@@ -1931,6 +1931,48 @@ function MapViewInner() {
     }
   };
 
+  const handleCurrentLocation = () => {
+    // 1. Check if the browser supports geolocation
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser or device.");
+      return;
+    }
+
+    // 2. Trigger your existing loading overlay
+    setAddressLoading(true);
+
+    // 3. Request high-accuracy GPS coordinates
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+
+        // 4. Create a faux "item" to feed into your existing address handler
+        const currentLocationItem = {
+          name: "📍 My Current Location",
+          lat: latitude,
+          lng: longitude,
+          type: "address",
+        };
+
+        // 5. Fire your existing master function to detect the catchment and draw the map!
+        handleAddressSelect(currentLocationItem);
+        setAddressLoading(false);
+      },
+      (error) => {
+        console.error("Error getting location:", error);
+        alert(
+          "Unable to retrieve your location. Please check your device location permissions.",
+        );
+        setAddressLoading(false);
+      },
+      {
+        enableHighAccuracy: true, // Forces phone GPS over Wi-Fi guessing for accurate boundary detection
+        timeout: 10000,
+        maximumAge: 0,
+      },
+    );
+  };
+
   // Local school + suburb results
   // 1. Setup Fuse instances (memoized for performance)
   const fuseSchools = useMemo(
@@ -2306,8 +2348,8 @@ function MapViewInner() {
           {/* MAP */}
           <MapContainer
             preferCanvas={true}
-            zoomSnap={0}
-            zoomDelta={0.1}
+            zoomSnap={1}
+            zoomDelta={1}
             wheelDebounceTime={10}
             center={[-33.86, 151.2]}
             zoom={11}
@@ -2481,8 +2523,49 @@ function MapViewInner() {
             })}
           </MapContainer>
 
-          {/* School Info Card */}
+          {/* GPS Location Button */}
+          <button
+            onClick={handleCurrentLocation}
+            title="What catchment area am i in" // 🔥 UPDATED: This controls the native browser hover tooltip
+            style={{
+              position: "absolute",
+              bottom: "100px",
+              right: "10px",
+              zIndex: 1000,
+              backgroundColor: "white",
+              border: "2px solid rgba(0,0,0,0.2)",
+              borderRadius: "4px",
+              width: "34px",
+              height: "34px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              boxShadow: "0 1px 5px rgba(0,0,0,0.65)",
+              transition: "background-color 0.2s ease",
+            }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.backgroundColor = "#f4f4f4")
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.backgroundColor = "white")
+            }
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#002b5c"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polygon points="3 11 22 2 13 21 11 13 3 11" />
+            </svg>
+          </button>
 
+          {/* School Info Card */}
           <AnimatePresence mode="wait">
             {selectedSchool && (
               <SchoolInfoCard
