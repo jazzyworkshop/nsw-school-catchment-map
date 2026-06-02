@@ -520,7 +520,31 @@ function FilterPanel({
             marginLeft: isOpen ? -1 : 2,
           }}
         >
-          {isOpen ? "‹" : "›"}
+          {isOpen ? (
+            
+            <span style={{ fontSize: "22px", lineHeight: "1" }}>‹</span>
+          ) : (
+            
+            <svg
+              width="16" 
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="3" y1="5" x2="21" y2="5"></line>
+              <circle cx="8" cy="5" r="2"></circle>
+              
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <circle cx="16" cy="12" r="2"></circle>
+              
+              <line x1="3" y1="19" x2="21" y2="19"></line>
+              <circle cx="10" cy="19" r="2"></circle>
+            </svg>
+          )}
         </span>
       </div>
     </>
@@ -1445,37 +1469,44 @@ function MapViewInner() {
   // 3. Preload catchments on app mount
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+
     async function loadData() {
-      // Check Global Cache
-      if (window._catchmentCache) {
+      const cached = window._catchmentCache;
+      if (cached) {
         if (!cancelled) {
-          setGeoData(window._catchmentCache);
+          setGeoData(cached);
           setCatchmentsReady(true);
         }
         return;
       }
 
       try {
-        const res = await fetch("/catchments.json");
+        const res = await fetch("/catchments.json", { signal: controller.signal });
+        if (!res.ok) throw new Error(`Catchment fetch failed: ${res.status}`);
+
         const topology = await res.json();
+        const objectKey = Object.keys(topology.objects || {})[0];
+        if (!objectKey) throw new Error("Invalid TopoJSON data");
 
-        // Decode TopoJSON
-        const objectKey = Object.keys(topology.objects)[0];
-        const decodedData = topojson.feature(
-          topology,
-          topology.objects[objectKey],
-        );
+        const decodedData = topojson.feature(topology, topology.objects[objectKey]);
 
-        // Update state and cache
+        if (cancelled) return;
         window._catchmentCache = decodedData;
         setGeoData(decodedData); // Triggers the useMemo above.
         setCatchmentsReady(true);
       } catch (err) {
-        console.error("Catchment Load Error:", err);
+        if (err.name !== "AbortError") {
+          console.error("Catchment Load Error:", err);
+        }
       }
     }
 
     loadData();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -1583,7 +1614,7 @@ function MapViewInner() {
 
   useEffect(() => {
     if (selectedSchool && selectedSchool.name) {
-      document.title = `${selectedSchool.name} Catchment Map | Local School Map`;
+      document.title = `${selectedSchool.name} Catchment Area Map | Local School Map`;
     } else {
       document.title = `NSW School Catchment Areas Map | Search zones by Suburb, School or Address`;
     }
@@ -2526,7 +2557,7 @@ function MapViewInner() {
           {/* GPS Location Button */}
           <button
             onClick={handleCurrentLocation}
-            title="What catchment area am i in" // 🔥 UPDATED: This controls the native browser hover tooltip
+            title="What Catchment Area am I in?"
             style={{
               position: "absolute",
               bottom: "100px",
@@ -2561,7 +2592,10 @@ function MapViewInner() {
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <polygon points="3 11 22 2 13 21 11 13 3 11" />
+              {/* Outer compass ring */}
+              <circle cx="12" cy="12" r="10" />
+              {/* Inner magnetic needle */}
+              <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
             </svg>
           </button>
 
