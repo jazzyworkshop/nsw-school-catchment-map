@@ -358,6 +358,7 @@ function FilterPanel({
   isOpen,
   onToggle,
   typeFilters,
+  showFilterPeek,
   setTypeFilters,
   genderFilter,
   setGenderFilter,
@@ -372,12 +373,17 @@ function FilterPanel({
   if (isMobile) {
     const PEEK_HEIGHT = 68;
 
-const hasActiveFilters = 
-  genderFilter !== "All" || 
-  ocFilter === true || 
-  selectiveFilter === true || 
-  showFuture === true ||
-  (typeFilters && Object.values(typeFilters).some(v => v === true)); // Adjust based on your exact default values
+    const hasActiveFilters = 
+      genderFilter !== "All" || 
+      ocFilter === true || 
+      selectiveFilter === true || 
+      showFuture === true ||
+      (typeFilters && Object.values(typeFilters).some(v => v === true));
+
+    const variants = {
+      peeking: { y: showFilterPeek ? `calc(100vh - ${PEEK_HEIGHT}px)` : "100vh" },
+      full: { y: "12vh" },
+    };
 
     return (
       <>
@@ -392,21 +398,50 @@ const hasActiveFilters =
             onClick={onToggle}
           />
         )}
-        <div
+        <motion.div
+          drag="y"
+          dragConstraints={{ top: 0, bottom: 0 }}
+          dragElastic={0.08}
+          dragDirectionLock
+          dragMomentum={true}
+          dragTransition={{
+            min: 0,
+            max: 0,
+            bounceStiffness: 500,
+            bounceDamping: 40,
+          }}
+          dragListener={true}
+          variants={variants}
+          initial="peeking"
+          animate={isOpen ? "full" : "peeking"}
+          onDragEnd={(e, info) => {
+            const swipeThreshold = 10;
+            const velocityThreshold = 30;
+
+            if (
+              info.velocity.y > velocityThreshold ||
+              info.offset.y > swipeThreshold
+            ) {
+              if (isOpen) onToggle();
+            } else if (
+              info.velocity.y < -velocityThreshold ||
+              info.offset.y < -swipeThreshold
+            ) {
+              if (!isOpen) onToggle();
+            }
+          }}
           style={{
             position: "fixed",
+            left: "8px",
+            right: "8px",
             bottom: 0,
-            left: 0,
-            right: 0,
+            height: "100vh",
             background: "white",
             zIndex: 5000,
-            borderRadius: "16px 16px 0 0",
-            boxShadow: "0 -4px 20px rgba(0,0,0,0.2)",
-            padding: "0 0 24px 0",
-            maxHeight: "80vh",
-            overflowY: "auto",
-            transform: isOpen ? "translateY(0)" : `translateY(calc(100% - ${PEEK_HEIGHT}px))`,
-            transition: "transform 0.28s cubic-bezier(0.4,0,0.2,1)",
+            borderRadius: "24px 24px 0 0",
+            boxShadow: "0 -8px 30px rgba(0,0,0,0.08)",
+            touchAction: "none",
+            willChange: "transform",
           }}
         >
           <div
@@ -418,49 +453,59 @@ const hasActiveFilters =
               padding: "8px 0 6px",
               cursor: "pointer",
               touchAction: "none",
+              height: "30px",
+              boxSizing: "border-box",
             }}
           >
             <div
               style={{
                 width: 40,
                 height: 4,
-               background: hasActiveFilters && !isOpen ? "#1E88E5" : "#ddd", 
-      borderRadius: 2,
-      marginBottom: "2px",
-      transition: "background-color 0.2s ease",
+                background: hasActiveFilters && !isOpen ? "#1E88E5" : "#ddd", 
+                borderRadius: 2,
+                marginBottom: "2px",
+                transition: "background-color 0.2s ease",
               }}
             />
             {!isOpen && (
               <span
-      style={{
-        fontSize: "10px",
-        fontWeight: 700,
-        // Optional: Turns text blue or adds a indicator dot
-        color: hasActiveFilters ? "#1E88E5" : "#666",
-        textTransform: "uppercase",
-        letterSpacing: "0.5px",
-        transition: "color 0.2s ease",
-      }}
-    >
-      {hasActiveFilters ? "Filters • Active" : "Filters"}
-    </span>
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  color: hasActiveFilters ? "#1E88E5" : "#666",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  transition: "color 0.2s ease",
+                }}
+              >
+                {hasActiveFilters ? "Filters • Active" : "Filters"}
+              </span>
             )}
           </div>
 
-          <FilterContent
-            typeFilters={typeFilters}
-            setTypeFilters={setTypeFilters}
-            genderFilter={genderFilter}
-            setGenderFilter={setGenderFilter}
-            ocFilter={ocFilter}
-            setOcFilter={setOcFilter}
-            selectiveFilter={selectiveFilter}
-            setSelectiveFilter={setSelectiveFilter}
-            showFuture={showFuture}
-            setShowFuture={setShowFuture}
-            onClearFilters={onClearFilters}
-          />
-        </div>
+          <div
+            style={{
+              height: "calc(100% - 30px)",
+              overflowY: "hidden",
+              paddingBottom: "40px",
+              pointerEvents: "auto",
+            }}
+          >
+            <FilterContent
+              typeFilters={typeFilters}
+              setTypeFilters={setTypeFilters}
+              genderFilter={genderFilter}
+              setGenderFilter={setGenderFilter}
+              ocFilter={ocFilter}
+              setOcFilter={setOcFilter}
+              selectiveFilter={selectiveFilter}
+              setSelectiveFilter={setSelectiveFilter}
+              showFuture={showFuture}
+              setShowFuture={setShowFuture}
+              onClearFilters={onClearFilters}
+            />
+          </div>
+        </motion.div>
       </>
     );
   }
@@ -596,7 +641,7 @@ const FilterContent = React.memo(function FilterContent({
     <div>
       <div
         style={{
-          padding: "18px 20px 12px",
+          padding: "14px 20px 10px",
           borderBottom: "1px solid #f0f0f0",
         }}
       >
@@ -605,9 +650,9 @@ const FilterContent = React.memo(function FilterContent({
         </span>
       </div>
 
-      <div style={{ padding: "16px 20px" }}>
+      <div style={{ padding: "12px 20px" }}>
         {/* School Type */}
-        <div style={{ marginBottom: "18px" }}>
+        <div style={{ marginBottom: "12px" }}>
           <SectionLabel>School Type</SectionLabel>
           {Object.entries(SCHOOL_COLORS).map(([label, color]) => (
             <div
@@ -670,7 +715,7 @@ const FilterContent = React.memo(function FilterContent({
         </div>
 
         {/* Gender */}
-        <div style={{ marginBottom: "18px" }}>
+        <div style={{ marginBottom: "12px" }}>
           <SectionLabel>Gender</SectionLabel>
           {[
             { value: "All", label: "All" },
@@ -683,7 +728,7 @@ const FilterContent = React.memo(function FilterContent({
               style={{
                 display: "flex",
                 alignItems: "center",
-                padding: "5px 0",
+                padding: "4px 0",
                 cursor: "pointer",
                 fontSize: "13px",
               }}
@@ -702,7 +747,7 @@ const FilterContent = React.memo(function FilterContent({
         </div>
 
         {/* Selective Status */}
-        <div style={{ marginBottom: "18px" }}>
+        <div style={{ marginBottom: "12px" }}>
           <SectionLabel>Selective Status</SectionLabel>
           {[
             { value: "all", label: "All Schools" },
@@ -715,7 +760,7 @@ const FilterContent = React.memo(function FilterContent({
               style={{
                 display: "flex",
                 alignItems: "center",
-                padding: "5px 0",
+                padding: "4px 0",
                 cursor: "pointer",
                 fontSize: "13px",
               }}
@@ -734,7 +779,7 @@ const FilterContent = React.memo(function FilterContent({
         </div>
 
         {/* Overlays */}
-        <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: "14px" }}>
+        <div style={{ marginBottom: "12px" }}>
           <SectionLabel>Overlays</SectionLabel>
           <ToggleRow
             checked={ocFilter}
@@ -760,7 +805,7 @@ const FilterContent = React.memo(function FilterContent({
           type="button"
           onClick={onClearFilters}
           style={{
-            marginTop: "14px",
+            marginTop: "10px",
             width: "100%",
             padding: "10px 12px",
             borderRadius: "8px",
@@ -1462,6 +1507,24 @@ function MapViewInner() {
   const [geoData, setGeoData] = useState(null);
   const [catchmentsReady, setCatchmentsReady] = useState(false);
 
+  const showFilterPeek = selectedSchool === null && addressMarker === null;
+
+  // Coordinated Filter Toggle Function
+  const handleToggleFilter = useCallback(() => {
+    setFilterOpen((prev) => {
+      const nextState = !prev;
+      // If opening filters, dismiss open school info panels & reset address vectors
+      if (nextState === true) {
+        setSelectedSchool(null);
+        setActiveCatchment(null);
+        setAddressMarker(null);
+        setPrimaryCatchmentFeature(null);
+        setSecondaryCatchmentFeature(null);
+      }
+      return nextState;
+    });
+  }, []);
+
   // The Memoized Index
   const catchmentIndex = useMemo(() => {
     if (!geoData?.features) return {};
@@ -1647,10 +1710,7 @@ function MapViewInner() {
 
   // Clear everything (used by clear pill, search clear, and map click)
   const handleClearAll = useCallback(() => {
-    // 1. Shut dropdowns
     setShowResults(false);
-
-    // 2. Clear out all overlay vectors and selections
     setActiveCatchment(null);
     setSelectedSchool(null);
     setSearchForcedSchool(null);
@@ -1684,6 +1744,8 @@ function MapViewInner() {
   const handleSchoolClick = useCallback(
     (school) => {
       if (!school || !school.name) return;
+
+      setFilterOpen(false);
 
       // 1. Sanitize the name into a secure, URL-friendly slug
       const slug = school.name
@@ -1864,6 +1926,7 @@ function MapViewInner() {
     setSecondaryCatchmentFeature(null);
 
     if (item.type === "school") {
+      setFilterOpen(false);
       setMapTarget([item.lat, item.lng]);
       setSelectedSchool(item);
 
@@ -1902,6 +1965,7 @@ function MapViewInner() {
   };
 
   const handleAddressSelect = async (item) => {
+    setFilterOpen(false);
     setSearchTerm(item.name);
     setDisplayTerm(item.name);
     setShowResults(false);
@@ -2650,7 +2714,8 @@ onEachFeature={(feature, layer) => {
       <FilterPanel
         isMobile={isMobile}
         isOpen={filterOpen}
-        onToggle={() => setFilterOpen((v) => !v)}
+        onToggle={handleToggleFilter}
+        showFilterPeek={showFilterPeek}
         typeFilters={typeFilters}
         setTypeFilters={setTypeFilters}
         genderFilter={genderFilter}
