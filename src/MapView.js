@@ -371,8 +371,12 @@ function FilterPanel({
   onClearFilters,
 }) {
   if (isMobile) {
-    const PEEK_HEIGHT = 68;
-
+    const PEEK_HEIGHT = 110;
+    const h = window.innerHeight;
+    const variants = {
+    peeking: { y: showFilterPeek ? h - PEEK_HEIGHT : h },
+    full: { y: h * 0.12 },
+  };
     const hasActiveFilters = 
       genderFilter !== "All" || 
       ocFilter === true || 
@@ -380,19 +384,20 @@ function FilterPanel({
       showFuture === true ||
       (typeFilters && Object.values(typeFilters).some(v => v === true));
 
-    const variants = {
-      peeking: { y: showFilterPeek ? `calc(100vh - ${PEEK_HEIGHT}px)` : "100vh" },
-      full: { y: "12vh" },
-    };
-
     return (
       <>
         {isOpen && (
           <div
             style={{
               ...styles.backdrop,
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "rgba(0,0,0,0.3)",
+              zIndex: 4999, // Backdrop behind the panel
               opacity: isOpen ? 1 : 0,
-              pointerEvents: isOpen ? "auto" : "none",
               transition: "opacity 0.28s ease",
             }}
             onClick={onToggle}
@@ -400,36 +405,36 @@ function FilterPanel({
         )}
         <motion.div
           drag="y"
-          dragConstraints={{ top: 0, bottom: 0 }}
-          dragElastic={0.08}
+          dragConstraints={{ 
+          top: h * 0.12,         // The exact pixel value of "full"
+          bottom: h - PEEK_HEIGHT // The exact pixel value of "peeking"
+        }}// Keep 0,0 and let dragElastic handle the "give"
+          dragElastic={0.05} // Increased for a smoother "pull" feel
           dragDirectionLock
-          dragMomentum={true}
-          dragTransition={{
-            min: 0,
-            max: 0,
-            bounceStiffness: 500,
-            bounceDamping: 40,
-          }}
-          dragListener={true}
+          dragMomentum={false}
           variants={variants}
-          initial="peeking"
           animate={isOpen ? "full" : "peeking"}
-          onDragEnd={(e, info) => {
-            const swipeThreshold = 10;
-            const velocityThreshold = 30;
-
-            if (
-              info.velocity.y > velocityThreshold ||
-              info.offset.y > swipeThreshold
-            ) {
-              if (isOpen) onToggle();
-            } else if (
-              info.velocity.y < -velocityThreshold ||
-              info.offset.y < -swipeThreshold
-            ) {
-              if (!isOpen) onToggle();
-            }
+          transition={{
+            type: "spring",
+            stiffness: 400,
+            damping: 35,
+            mass: 0.8
           }}
+          onDragEnd={(e, info) => {
+            const swipeThreshold = 50;
+            const velocityThreshold = 200;
+
+            // Dragging DOWN (positive values)
+          const isFlickingDown = info.velocity.y > velocityThreshold || info.offset.y > swipeThreshold;
+          // Dragging UP (negative values)
+          const isFlickingUp = info.velocity.y < -velocityThreshold || info.offset.y < -swipeThreshold;
+
+          if (isFlickingDown && isOpen) {
+            onToggle(); // Close it
+          } else if (isFlickingUp && !isOpen) {
+            onToggle(); // Open it
+          }
+        }}
           style={{
             position: "fixed",
             left: "8px",
@@ -437,60 +442,37 @@ function FilterPanel({
             bottom: 0,
             height: "100vh",
             background: "white",
-            zIndex: 5000,
+            zIndex: 5000, // Panel above backdrop
             borderRadius: "24px 24px 0 0",
-            boxShadow: "0 -8px 30px rgba(0,0,0,0.08)",
+            boxShadow: "0 -8px 30px rgba(0,0,0,0.15)",
             touchAction: "none",
             willChange: "transform",
           }}
         >
+          {/* Handle Section */}
           <div
             onClick={onToggle}
             style={{
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              padding: "8px 0 6px",
-              cursor: "pointer",
-              touchAction: "none",
-              height: "30px",
-              boxSizing: "border-box",
+              padding: "16px 0",
+              cursor: "grab",
+              height: "40px",
             }}
           >
             <div
               style={{
                 width: 40,
-                height: 4,
-                background: hasActiveFilters && !isOpen ? "#1E88E5" : "#ddd", 
-                borderRadius: 2,
-                marginBottom: "2px",
-                transition: "background-color 0.2s ease",
+                height: 5,
+                background: hasActiveFilters && !isOpen ? "#1E88E5" : "#ccc",
+                borderRadius: 3,
+                transition: "background 0.2s",
               }}
             />
-            {!isOpen && (
-              <span
-                style={{
-                  fontSize: "10px",
-                  fontWeight: 700,
-                  color: hasActiveFilters ? "#1E88E5" : "#666",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.5px",
-                  transition: "color 0.2s ease",
-                }}
-              >
-                {hasActiveFilters ? "Filters • Active" : "Filters"}
-              </span>
-            )}
           </div>
 
-          <div
-            style={{
-              height: "calc(100% - 30px)",
-              overflowY: "hidden",
-              paddingBottom: "40px",
-              pointerEvents: "auto",
-            }}
-          >
+          <div style={{ height: "calc(100% - 40px)", overflowY: "auto" }}>
             <FilterContent
               typeFilters={typeFilters}
               setTypeFilters={setTypeFilters}
@@ -2641,7 +2623,7 @@ onEachFeature={(feature, layer) => {
     title="What Catchment Area am I in?"
     style={{
       position: "absolute",
-      bottom: isMobile ? "78px" : "100px",
+      bottom: isMobile ? "120px" : "100px",
       right: "10px",
       zIndex: 1000,
       backgroundColor: "white",
