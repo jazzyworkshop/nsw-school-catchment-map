@@ -98,37 +98,28 @@ class MapErrorBoundary extends React.Component {
 /* ────────────────────────────────────────────────────────────────
    ZOOM HANDLER
    ──────────────────────────────────────────────────────────────── */
+// 💡 Accept isMobile as a prop from the parent component
 function ZoomHandler({ target }) {
   const map = useMap();
 
   useEffect(() => {
-    if (target && map && typeof map.flyTo === "function") {
+    // Ensure target exists and is a valid array with coordinates
+    if (target && target[0] !== 0 && map && typeof map.flyTo === "function") {
       try {
-        map.stop(); // Stop any current movement
+        map.stop(); // Stop any ongoing pan/zoom animations
 
-        const isMobile = window.innerWidth <= 768;
-        let finalTarget = [...target];
-
-        if (isMobile) {
-          // SIMPLE NUDGE:
-          // map to center on a point slightly SOUTH of the school.
-          // This forces the actual school dot to appear higher up.
-          // 0.008 is roughly the height of the 'peek' area at zoom 14.
-          finalTarget[0] = finalTarget[0] - 0.008;
-        }
-
-        map.flyTo(finalTarget, 14, {
+        // It flies exactly to the mapTarget array you set in your click handlers
+        map.flyTo(target, 14, {
           duration: 0.4,
           easeLinearity: 0.7,
           noMoveStart: true,
         });
 
-        // Ensure the map knows its size after the movement
         map.once("moveend", () => {
           map.invalidateSize({ animate: false });
         });
       } catch (e) {
-        console.warn("Zoom error:", e);
+        console.warn("Zoom handler animation error:", e);
       }
     }
   }, [target, map]);
@@ -354,7 +345,7 @@ const styles = {
    FILTER PANEL
    ──────────────────────────────────────────────────────────────── */
 function FilterPanel({
-  isMobile,
+  isMobile: passedIsMobile, 
   isOpen,
   onToggle,
   typeFilters,
@@ -370,13 +361,37 @@ function FilterPanel({
   setShowFuture,
   onClearFilters,
 }) {
-  if (isMobile) {
+  const [isTrueMobile, setIsTrueMobile] = useState(false);
+  const [snapState, setSnapState] = useState("peeking");
+  const controls = useAnimation();
+
+  useEffect(() => {
+    const userAgent = typeof window.navigator === "undefined" ? "" : navigator.userAgent;
+    const isMobileOS = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+    setIsTrueMobile(isMobileOS && passedIsMobile);
+  }, [passedIsMobile]);
+
+  useEffect(() => {
+    if (isTrueMobile) {
+      const targetState = isOpen ? "full" : "peeking";
+      setSnapState(targetState);
+      controls.start(targetState);
+    }
+  }, [isOpen, isTrueMobile, controls]);
+
+  /* ==========================================================================
+     1. MOBILE DRAWER LAYOUT
+     ========================================================================== */
+  if (isTrueMobile) {
     const PEEK_HEIGHT = 110;
     const h = window.innerHeight;
+    
     const variants = {
-    peeking: { y: showFilterPeek ? h - PEEK_HEIGHT : h },
-    full: { y: h * 0.12 },
-  };
+      peeking: { y: showFilterPeek ? h - PEEK_HEIGHT : h },
+      full: { y: h * 0.12 },
+      closed: { y: h }
+    };
+
     const hasActiveFilters = 
       genderFilter !== "All" || 
       ocFilter === true || 
@@ -389,52 +404,65 @@ function FilterPanel({
         {isOpen && (
           <div
             style={{
-              ...styles.backdrop,
               position: "fixed",
               top: 0,
               left: 0,
               right: 0,
               bottom: 0,
               backgroundColor: "rgba(0,0,0,0.3)",
-              zIndex: 4999, // Backdrop behind the panel
+              zIndex: 4999,
               opacity: isOpen ? 1 : 0,
               transition: "opacity 0.28s ease",
             }}
             onClick={onToggle}
           />
         )}
+        
         <motion.div
           drag="y"
-          dragConstraints={{ 
-          top: h * 0.12,         // The exact pixel value of "full"
-          bottom: h - PEEK_HEIGHT // The exact pixel value of "peeking"
-        }}// Keep 0,0 and let dragElastic handle the "give"
-          dragElastic={0.05} // Increased for a smoother "pull" feel
+          dragConstraints={{ top: 0, bottom: 0 }}
+          dragElastic={0.08}
           dragDirectionLock
-          dragMomentum={false}
-          variants={variants}
-          animate={isOpen ? "full" : "peeking"}
-          transition={{
-            type: "spring",
-            stiffness: 400,
-            damping: 35,
-            mass: 0.8
+          dragMomentum={true}
+          dragTransition={{
+            min: 0,
+            max: 0,
+            bounceStiffness: 500,
+            bounceDamping: 40,
           }}
+          dragListener={true}
+          variants={variants}
+          initial="peeking"
+          animate={controls}
+          exit="closed"
           onDragEnd={(e, info) => {
-            const swipeThreshold = 50;
-            const velocityThreshold = 200;
+            const swipeThreshold = 10;
+            const velocityThreshold = 30;
 
-            // Dragging DOWN (positive values)
-          const isFlickingDown = info.velocity.y > velocityThreshold || info.offset.y > swipeThreshold;
-          // Dragging UP (negative values)
-          const isFlickingUp = info.velocity.y < -velocityThreshold || info.offset.y < -swipeThreshold;
-
-          if (isFlickingDown && isOpen) {
-            onToggle(); // Close it
-          } else if (isFlickingUp && !isOpen) {
-            onToggle(); // Open it
-          }
-        }}
+            if (
+              info.velocity.y > velocityThreshold ||
+              info.offset.y > swipeThreshold
+            ) {
+              if (isOpen) {
+                onToggle(); 
+              } else {
+                controls.start("peeking");
+                setSnapState("peeking");
+              }
+            } else if (
+              info.velocity.y < -velocityThreshold ||
+              info.offset.y < -swipeThreshold
+            ) {
+              if (!isOpen) {
+                onToggle(); 
+              } else {
+                controls.start("full");
+                setSnapState("full");
+              }
+            } else {
+              controls.start(snapState);
+            }
+          }}
           style={{
             position: "fixed",
             left: "8px",
@@ -442,37 +470,62 @@ function FilterPanel({
             bottom: 0,
             height: "100vh",
             background: "white",
-            zIndex: 5000, // Panel above backdrop
+            zIndex: 5000,
             borderRadius: "24px 24px 0 0",
             boxShadow: "0 -8px 30px rgba(0,0,0,0.15)",
             touchAction: "none",
             willChange: "transform",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          {/* Handle Section */}
           <div
             onClick={onToggle}
             style={{
+              width: "100%",
+              height: "40px",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              padding: "16px 0",
+              justifyContent: "center",
               cursor: "grab",
-              height: "40px",
+              flexShrink: 0,
+              touchAction: "none"
             }}
           >
             <div
               style={{
                 width: 40,
                 height: 5,
-                background: hasActiveFilters && !isOpen ? "#1E88E5" : "#ccc",
-                borderRadius: 3,
-                transition: "background 0.2s",
+                background: hasActiveFilters && !isOpen ? "#1E88E5" : "#E2E8F0",
+                borderRadius: 10,
+                marginBottom: "4px"
               }}
             />
+            {!isOpen && (
+              <span
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  color: hasActiveFilters ? "#1E88E5" : "#666",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                }}
+              >
+                {hasActiveFilters ? "Filters • Active" : "Filters"}
+              </span>
+            )}
           </div>
 
-          <div style={{ height: "calc(100% - 40px)", overflowY: "auto" }}>
+          <div 
+            style={{ 
+              flex: "0 1 auto",
+              height: "calc(100% - 40px)",
+              overflowY: snapState === "full" ? "auto" : "hidden",
+              paddingBottom: "100px", 
+              pointerEvents: "auto",
+            }}
+          >
             <FilterContent
               typeFilters={typeFilters}
               setTypeFilters={setTypeFilters}
@@ -487,14 +540,20 @@ function FilterPanel({
               onClearFilters={onClearFilters}
             />
           </div>
+
+          <div style={{ flex: "1 1 auto", touchAction: "none" }} />
         </motion.div>
       </>
     );
   }
 
+  /* ==========================================================================
+     2. DESKTOP SIDEBAR LAYOUT
+     ========================================================================== */
   const PANEL_WIDTH = 260;
   const TAB_W = 22;
   const TAB_H = 64;
+  const HEADER_HEIGHT = 60; 
   const tabLeft = isOpen ? PANEL_WIDTH : 0;
 
   return (
@@ -502,7 +561,12 @@ function FilterPanel({
       {isOpen && (
         <div
           style={{
-            ...styles.backdrop,
+            position: "fixed",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.1)",
+            transition: "opacity 0.25s ease-in-out",
             top: HEADER_HEIGHT,
             zIndex: 4900,
           }}
@@ -589,10 +653,8 @@ function FilterPanel({
             >
               <line x1="3" y1="5" x2="21" y2="5"></line>
               <circle cx="8" cy="5" r="2"></circle>
-              
               <line x1="3" y1="12" x2="21" y2="12"></line>
               <circle cx="16" cy="12" r="2"></circle>
-              
               <line x1="3" y1="19" x2="21" y2="19"></line>
               <circle cx="10" cy="19" r="2"></circle>
             </svg>
@@ -1062,7 +1124,7 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
             willChange: "transform",
           }}
         >
-          {/* 2. REMOVE the "Hidden Overlay" div entirely if it's still there */}
+          
 
           {/* VISUAL HANDLE */}
           <div
@@ -2450,7 +2512,9 @@ function MapViewInner() {
   style={{ height: "100%", width: "100%" }}
   zoomControl={false}
 >
-  {/* Add the new native listener directly here under the container */}
+
+<ZoomHandler target={mapTarget} isMobile={isMobile} />
+ 
   <MapClickHandler onMapClick={handleClearAll} />
 
   <TileLayer
