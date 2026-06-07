@@ -345,7 +345,7 @@ const styles = {
    FILTER PANEL
    ──────────────────────────────────────────────────────────────── */
 function FilterPanel({
-  isMobile: passedIsMobile, 
+  isMobile: passedIsMobile,
   isOpen,
   onToggle,
   typeFilters,
@@ -365,42 +365,51 @@ function FilterPanel({
   const [snapState, setSnapState] = useState("peeking");
   const controls = useAnimation();
 
+  // 1. Device detection
   useEffect(() => {
     const userAgent = typeof window.navigator === "undefined" ? "" : navigator.userAgent;
     const isMobileOS = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
     setIsTrueMobile(isMobileOS && passedIsMobile);
   }, [passedIsMobile]);
 
+  // 2. Coordinated state management
   useEffect(() => {
     if (isTrueMobile) {
-      const targetState = isOpen ? "full" : "peeking";
-      setSnapState(targetState);
-      controls.start(targetState);
+      if (!showFilterPeek && !isOpen) {
+        // If a school is selected, parent sets showFilterPeek to false
+        setSnapState("closed");
+        controls.start("closed");
+      } else {
+        const targetState = isOpen ? "full" : "peeking";
+        setSnapState(targetState);
+        controls.start(targetState);
+      }
     }
-  }, [isOpen, isTrueMobile, controls]);
+  }, [isOpen, showFilterPeek, isTrueMobile, controls]);
 
   /* ==========================================================================
      1. MOBILE DRAWER LAYOUT
      ========================================================================== */
   if (isTrueMobile) {
-    const PEEK_HEIGHT = 110;
+    const PEEK_HEIGHT = 60;
     const h = window.innerHeight;
-    
+
     const variants = {
-      peeking: { y: showFilterPeek ? h - PEEK_HEIGHT : h },
+      peeking: { y: h - PEEK_HEIGHT },
       full: { y: h * 0.12 },
-      closed: { y: h }
+      closed: { y: h + 100 },
     };
 
-    const hasActiveFilters = 
-      genderFilter !== "All" || 
-      ocFilter === true || 
-      selectiveFilter === true || 
+    const hasActiveFilters =
+      genderFilter !== "All" ||
+      ocFilter === true ||
+      selectiveFilter === true ||
       showFuture === true ||
-      (typeFilters && Object.values(typeFilters).some(v => v === true));
+      (typeFilters && Object.values(typeFilters).some((v) => v === true));
 
     return (
       <>
+        {/* Backdrop for the Filter Panel when in FULL state */}
         {isOpen && (
           <div
             style={{
@@ -411,19 +420,25 @@ function FilterPanel({
               bottom: 0,
               backgroundColor: "rgba(0,0,0,0.3)",
               zIndex: 4999,
-              opacity: isOpen ? 1 : 0,
+              opacity: 1,
               transition: "opacity 0.28s ease",
             }}
             onClick={onToggle}
           />
         )}
-        
+
         <motion.div
           drag="y"
-          dragConstraints={{ top: 0, bottom: 0 }}
-          dragElastic={0.08}
+          dragConstraints={{ 
+    top: snapState === "full" ? 0 : -window.innerHeight, 
+    bottom: 0 
+  }}
+          dragElastic={{ 
+    top: snapState === "full" ? 0 : 0.08, 
+    bottom: 0.08 
+  }}
           dragDirectionLock
-          dragMomentum={true}
+          dragMomentum={false}
           dragTransition={{
             min: 0,
             max: 0,
@@ -434,35 +449,6 @@ function FilterPanel({
           variants={variants}
           initial="peeking"
           animate={controls}
-          exit="closed"
-          onDragEnd={(e, info) => {
-            const swipeThreshold = 10;
-            const velocityThreshold = 30;
-
-            if (
-              info.velocity.y > velocityThreshold ||
-              info.offset.y > swipeThreshold
-            ) {
-              if (isOpen) {
-                onToggle(); 
-              } else {
-                controls.start("peeking");
-                setSnapState("peeking");
-              }
-            } else if (
-              info.velocity.y < -velocityThreshold ||
-              info.offset.y < -swipeThreshold
-            ) {
-              if (!isOpen) {
-                onToggle(); 
-              } else {
-                controls.start("full");
-                setSnapState("full");
-              }
-            } else {
-              controls.start(snapState);
-            }
-          }}
           style={{
             position: "fixed",
             left: "8px",
@@ -478,7 +464,29 @@ function FilterPanel({
             display: "flex",
             flexDirection: "column",
           }}
-        >
+          onDragEnd={(e, info) => {
+    const swipeThreshold = 10;
+    const velocityThreshold = 30;
+
+    // Only allow handling structural changes if dragging DOWNward
+    if (info.velocity.y > velocityThreshold || info.offset.y > swipeThreshold) {
+      if (isOpen) {
+        onToggle(); // Triggers close mechanics back to peek state
+      }
+    } else if (info.velocity.y < -velocityThreshold || info.offset.y < -swipeThreshold) {
+      // Dragging UPward
+      if (!isOpen) {
+        onToggle(); // Only allow opening if it wasn't open already
+      } else {
+        // If already open, snap tightly back to full position layout
+        controls.start("full");
+      }
+    } else {
+      controls.start(snapState);
+    }
+  }}
+>
+          {/* VISUAL HANDLE & TAB */}
           <div
             onClick={onToggle}
             style={{
@@ -490,7 +498,7 @@ function FilterPanel({
               justifyContent: "center",
               cursor: "grab",
               flexShrink: 0,
-              touchAction: "none"
+              touchAction: "none",
             }}
           >
             <div
@@ -499,7 +507,7 @@ function FilterPanel({
                 height: 5,
                 background: hasActiveFilters && !isOpen ? "#1E88E5" : "#E2E8F0",
                 borderRadius: 10,
-                marginBottom: "4px"
+                marginBottom: "4px",
               }}
             />
             {!isOpen && (
@@ -517,12 +525,13 @@ function FilterPanel({
             )}
           </div>
 
-          <div 
-            style={{ 
+          {/* INNER CONTENT AREA */}
+          <div
+            style={{
               flex: "0 1 auto",
               height: "calc(100% - 40px)",
               overflowY: snapState === "full" ? "auto" : "hidden",
-              paddingBottom: "100px", 
+              paddingBottom: "100px",
               pointerEvents: "auto",
             }}
           >
@@ -553,7 +562,7 @@ function FilterPanel({
   const PANEL_WIDTH = 260;
   const TAB_W = 22;
   const TAB_H = 64;
-  const HEADER_HEIGHT = 60; 
+  const HEADER_HEIGHT = 60;
   const tabLeft = isOpen ? PANEL_WIDTH : 0;
 
   return (
@@ -642,7 +651,7 @@ function FilterPanel({
             <span style={{ fontSize: "22px", lineHeight: "1" }}>‹</span>
           ) : (
             <svg
-              width="16" 
+              width="16"
               height="16"
               viewBox="0 0 24 24"
               fill="none"
@@ -1015,38 +1024,52 @@ function ToggleRow({ checked, onChange, label, icon, sublabel, tooltip }) {
 /* ────────────────────────────────────────────────────────────────
    SCHOOL INFO CARD
    ──────────────────────────────────────────────────────────────── */
-function SchoolInfoCard({ school, isMobile, onClose }) {
+function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onClose }) {
   const controls = useAnimation();
+  const [snapState, setSnapState] = useState("closed");
 
-  const [snapState, setSnapState] = useState("peeking");
-
+  // Synchronize layout animations with lifecycle changes
   useEffect(() => {
-    if (isMobile && school) {
-      controls.start("peeking");
-      setSnapState("peeking");
+    if (!isMobile) return;
+
+    if (!school) {
+      setSnapState("closed");
+      controls.start("closed");
+    } else {
+      const targetState = isOpen ? "full" : "peeking";
+      setSnapState(targetState);
+      controls.start(targetState);
     }
-  }, [school, isMobile, controls]);
+  }, [school, isOpen, isMobile, controls]);
 
-  if (!school) return null;
-
-  const level = school.level || "";
+  // Compute school branding color profiles safely if school exists
+  const level = school?.level || "";
   let typeColor;
-  if (level.includes("Primary")) typeColor = SCHOOL_COLORS.Primary;
-  else if (level.includes("Secondary") || level.includes("High"))
+  if (level.includes("Primary")) {
+    typeColor = SCHOOL_COLORS.Primary;
+  } else if (level.includes("Secondary") || level.includes("High")) {
     typeColor = SCHOOL_COLORS.Secondary;
-  else if (level.includes("Central")) typeColor = SCHOOL_COLORS.Central;
-  else typeColor = SCHOOL_COLORS.Other || "#888";
+  } else if (level.includes("Central")) {
+    typeColor = SCHOOL_COLORS.Central;
+  } else {
+    typeColor = SCHOOL_COLORS.Other || "#888";
+  }
 
   const variants = {
     peeking: { y: "65vh" },
-    full: { y: "10vh" },
+    full: { y: "8vh" },
     closed: { y: "100vh" },
   };
+
+  // Render nothing on desktop if no active data profile is selected
+  if (!isMobile && !school) return null;
 
   return (
     <>
       {!isMobile ? (
-        /* DESKTOP VIEW */
+        /* ==========================================================================
+           1. DESKTOP VIEW PANEL
+           ========================================================================== */
         <div
           style={{
             position: "absolute",
@@ -1070,100 +1093,143 @@ function SchoolInfoCard({ school, isMobile, onClose }) {
           />
         </div>
       ) : (
-        /* --- UPDATED MOBILE VIEW: REFINED AESTHETICS --- */
-        <motion.div
-          drag="y"
-          dragConstraints={{ top: 0, bottom: 0 }}
-          dragElastic={0.08}
-          dragDirectionLock
-          dragMomentum={true}
-          dragTransition={{
-            min: 0,
-            max: 0,
-            bounceStiffness: 500,
-            bounceDamping: 40,
-          }}
-          dragListener={true}
-          variants={variants}
-          initial="closed"
-          animate={controls}
-          exit="closed"
-          onDragEnd={(e, info) => {
-            const swipeThreshold = 10;
-            const velocityThreshold = 30;
-
-            if (
-              info.velocity.y > velocityThreshold ||
-              info.offset.y > swipeThreshold
-            ) {
-              controls.start("peeking");
-              setSnapState("peeking");
-            } else if (
-              info.velocity.y < -velocityThreshold ||
-              info.offset.y < -swipeThreshold
-            ) {
-              controls.start("full");
-              setSnapState("full");
-            } else {
-              controls.start(snapState);
-            }
-          }}
-          style={{
-            position: "fixed",
-            left: "8px",
-            right: "8px",
-            bottom: 0,
-            height: "100vh",
-            background: "white",
-            zIndex: 4800,
-            borderRadius: "24px 24px 0 0",
-            overflow: "hidden",
-            boxShadow: "0 -8px 30px rgba(0,0,0,0.08)",
-            // 1. CHANGE: Allow 'pan-y' so the browser can distinguish taps from scrolls
-            touchAction: "none",
-            willChange: "transform",
-          }}
-        >
-          
-
-          {/* VISUAL HANDLE */}
-          <div
-            style={{
-              width: "100%",
-              height: "30px",
-              display: "flex",
-              justifyContent: "center",
-            }}
-          >
+        /* ==========================================================================
+           2. MOBILE BOTTOM SHEET VIEW (Coordinated Lifecycle Architecture)
+           ========================================================================== */
+        <>
+          {/* Transparent click backdrop wrapper when sheet is fully expanded */}
+          {school && isOpen && (
             <div
               style={{
-                width: 40,
-                height: 5,
-                background: "#E2E8F0",
-                borderRadius: 10,
-                marginTop: "12px",
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: "rgba(0,0,0,0.3)",
+                zIndex: 4799,
+              }}
+              onClick={() => {
+                setSnapState("peeking");
+                controls.start("peeking");
+                if (onClose) onClose();
               }}
             />
-          </div>
+          )}
 
-          {/* 3. INNER CONTENT AREA - CLICKABLE AGAIN */}
-          <div
+          <motion.div
+            drag="y"
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={0.08}
+            dragDirectionLock
+            dragMomentum={true}
+            dragTransition={{
+              min: 0,
+              max: 0,
+              bounceStiffness: 500,
+              bounceDamping: 40,
+            }}
+            dragListener={true}
+            variants={variants}
+            initial="closed"
+            animate={controls}
             style={{
-              height: "calc(100% - 30px)",
-              overflowY: snapState === "full" ? "auto" : "hidden",
-              paddingBottom: "100px",
-              // 4. IMPORTANT: Let the content receive pointer events
-              pointerEvents: "auto",
+              position: "fixed",
+              left: "8px",
+              right: "8px",
+              bottom: 0,
+              height: "100vh",
+              background: "white",
+              zIndex: 4800,
+              borderRadius: "24px 24px 0 0",
+              overflow: "hidden",
+              boxShadow: "0 -8px 30px rgba(0,0,0,0.08)",
+              touchAction: "none",
+              willChange: "transform",
+            }}
+            onDragEnd={(e, info) => {
+              const swipeThreshold = 10;
+              const velocityThreshold = 30;
+
+              if (
+                info.velocity.y > velocityThreshold ||
+                info.offset.y > swipeThreshold
+              ) {
+                // Dragged or flicked DOWN
+                if (snapState === "full") {
+                  setSnapState("peeking");
+                  controls.start("peeking");
+                  if (onClose) onClose(); // Notify parent window layer
+                } else if (snapState === "peeking") {
+                  setSnapState("closed");
+                  controls.start("closed");
+                  if (onClose) onClose(); // Complete collapse dismissal
+                }
+              } else if (
+                info.velocity.y < -velocityThreshold ||
+                info.offset.y < -swipeThreshold
+              ) {
+                // Dragged or flicked UP
+                setSnapState("full");
+                controls.start("full");
+                if (onOpen) onOpen(); // Notify parent window layer
+              } else {
+                controls.start(snapState);
+              }
             }}
           >
-            <CardBody
-              school={school}
-              typeColor={typeColor}
-              onClose={onClose}
-              isMobile={true}
-            />
-          </div>
-        </motion.div>
+            {/* VISUAL GRAB HANDLE TAB */}
+            <div
+              style={{
+                width: "100%",
+                height: "30px",
+                display: "flex",
+                justifyContent: "center",
+                cursor: "grab",
+              }}
+              onClick={() => {
+                if (snapState === "peeking") {
+                  setSnapState("full");
+                  controls.start("full");
+                  if (onOpen) onOpen();
+                } else {
+                  setSnapState("peeking");
+                  controls.start("peeking");
+                  if (onClose) onClose();
+                }
+              }}
+            >
+              <div
+                style={{
+                  width: 40,
+                  height: 5,
+                  background: "#E2E8F0",
+                  borderRadius: 10,
+                  marginTop: "12px",
+                }}
+              />
+            </div>
+
+            {/* INNER SCROLL CONTENT CONTAINER CONTAINER */}
+            <div
+              style={{
+                height: "calc(100% - 30px)",
+                overflowY: snapState === "full" ? "auto" : "hidden",
+                paddingBottom: "100px",
+                pointerEvents: "auto",
+              }}
+            >
+              {school && (
+                <CardBody
+                  school={school}
+                  typeColor={typeColor}
+                  onClose={onClose}
+                  isMobile={true}
+                />
+              )}
+            </div>
+          </motion.div>
+        </>
       )}
     </>
   );
@@ -1530,9 +1596,24 @@ function MapViewInner() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [showResults, setShowResults] = useState(false);
 
-  const [isMobile, setIsMobile] = useState(
-    typeof window !== "undefined" ? window.innerWidth < 768 : false,
-  );
+  // 💡 NEW STATE: Manages FULL expanded layout state for the School Info Card bottom sheet
+  const [schoolCardOpen, setSchoolCardOpen] = useState(false);
+
+  // Robust device width & OS matching layer
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 1024px)");
+    const userAgent = typeof window.navigator === "undefined" ? "" : navigator.userAgent;
+    const isMobileOS = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+    
+    const handleDeviceChange = (e) => {
+      setIsMobile(e.matches && isMobileOS);
+    };
+    
+    setIsMobile(mediaQuery.matches && isMobileOS);
+    mediaQuery.addEventListener("change", handleDeviceChange);
+    return () => mediaQuery.removeEventListener("change", handleDeviceChange);
+  }, []);
 
   const [typeFilters, setTypeFilters] = useState(Object.keys(SCHOOL_COLORS));
   const [genderFilter, setGenderFilter] = useState("All");
@@ -1545,21 +1626,22 @@ function MapViewInner() {
   const [addressLoading, setAddressLoading] = useState(false);
   const [addressMarker, setAddressMarker] = useState(null);
   const [primaryCatchmentFeature, setPrimaryCatchmentFeature] = useState(null);
-  const [secondaryCatchmentFeature, setSecondaryCatchmentFeature] =
-    useState(null);
+  const [secondaryCatchmentFeature, setSecondaryCatchmentFeature] = useState(null);
   const [catchmentView, setCatchmentView] = useState("primary"); // "primary" | "secondary"
   const [geoData, setGeoData] = useState(null);
   const [catchmentsReady, setCatchmentsReady] = useState(false);
 
+  // Derived peek bar visibility: Hide filter peek when a school is open or address is marked
   const showFilterPeek = selectedSchool === null && addressMarker === null;
 
-  // Coordinated Filter Toggle Function
+  // 💡 COORDINATED FILTER TOGGLE FUNCTION (Updated for Coordinated Architecture)
   const handleToggleFilter = useCallback(() => {
     setFilterOpen((prev) => {
       const nextState = !prev;
-      // If opening filters, dismiss open school info panels & reset address vectors
+      // If opening filters, safely dismiss school panels, card layout parameters, and address vectors
       if (nextState === true) {
         setSelectedSchool(null);
+        setSchoolCardOpen(false); // Force card layout variable down
         setActiveCatchment(null);
         setAddressMarker(null);
         setPrimaryCatchmentFeature(null);
@@ -1567,6 +1649,19 @@ function MapViewInner() {
       }
       return nextState;
     });
+  }, []);
+
+  // 💡 HOOK HANDLER: Call this whenever a school node item is selected on the map or search bar
+  const handleSelectSchool = useCallback((schoolItem) => {
+    setFilterOpen(false);      // Close filters expanded layout view
+    setSelectedSchool(schoolItem);
+    setSchoolCardOpen(false);   // Reset card sheet layout back to PEEK state on clear selection
+  }, []);
+
+  // 💡 HOOK HANDLER: Safely closes school card completely and brings back the filter peek bar
+  const handleCloseSchoolCard = useCallback(() => {
+    setSelectedSchool(null);
+    setSchoolCardOpen(false);
   }, []);
 
   // The Memoized Index
@@ -2731,17 +2826,13 @@ onEachFeature={(feature, layer) => {
   </button>
 )}
 
-          {/* School Info Card */}
-          <AnimatePresence mode="wait">
-            {selectedSchool && (
-              <SchoolInfoCard
-                key={selectedSchool.code} // CRITICAL: Forces a fresh slide-up for every school
-                school={selectedSchool}
-                isMobile={isMobile}
-                onClose={() => setSelectedSchool(null)}
-              />
-            )}
-          </AnimatePresence>
+       <SchoolInfoCard
+  school={selectedSchool}
+  isMobile={isMobile}
+  isOpen={schoolCardOpen}         // Controls if it's expanded to the top
+  onOpen={() => setSchoolCardOpen(true)}
+  onClose={handleCloseSchoolCard} // Handles sliding down and clearing selection
+/>
         </div>{" "}
         {/* Closes mapArea */}
         {/* FOOTER - Moved inside the appShell div */}
@@ -2758,22 +2849,22 @@ onEachFeature={(feature, layer) => {
       {/* Closes appShell */}
       {/* Filter Panel - Inside the main fragment, but outside appShell */}
       <FilterPanel
-        isMobile={isMobile}
-        isOpen={filterOpen}
-        onToggle={handleToggleFilter}
-        showFilterPeek={showFilterPeek}
-        typeFilters={typeFilters}
-        setTypeFilters={setTypeFilters}
-        genderFilter={genderFilter}
-        setGenderFilter={setGenderFilter}
-        ocFilter={ocFilter}
-        setOcFilter={setOcFilter}
-        selectiveFilter={selectiveFilter}
-        setSelectiveFilter={setSelectiveFilter}
-        showFuture={showFuture}
-        setShowFuture={setShowFuture}
-        onClearFilters={handleClearFilters}
-      />
+  isMobile={isMobile}
+  isOpen={filterOpen}
+  onToggle={handleToggleFilter}
+  showFilterPeek={showFilterPeek}
+  typeFilters={typeFilters}
+  setTypeFilters={setTypeFilters}
+  genderFilter={genderFilter}
+  setGenderFilter={setGenderFilter}
+  ocFilter={ocFilter}
+  setOcFilter={setOcFilter}
+  selectiveFilter={selectiveFilter}
+  setSelectiveFilter={setSelectiveFilter}
+  showFuture={showFuture}
+  setShowFuture={setShowFuture}
+  onClearFilters={handleClearFilters}
+/>
     </>
   );
 }
