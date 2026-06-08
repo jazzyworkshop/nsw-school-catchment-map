@@ -364,6 +364,11 @@ function FilterPanel({
   const [isTrueMobile, setIsTrueMobile] = useState(false);
   const [snapState, setSnapState] = useState("peeking");
   const controls = useAnimation();
+  const panelTransition = {
+  type: "tween",
+  ease: "circOut",
+  duration: 0.3
+};
 
   // 1. Device detection
   useEffect(() => {
@@ -430,25 +435,27 @@ function FilterPanel({
         <motion.div
           drag="y"
           dragConstraints={{ 
-    top: snapState === "full" ? 0 : -window.innerHeight, 
-    bottom: 0 
-  }}
-          dragElastic={{ 
-    top: snapState === "full" ? 0 : 0.08, 
-    bottom: 0.08 
-  }}
+              top: snapState === "full" ? 0 : -window.innerHeight, 
+              bottom: 0 
+            }}
+            // 💡 Disable elasticity at the top to prevent rubber-banding
+           //  dragElastic={{ 
+           //   top: snapState === "full" ? 0 : 0.08, 
+           //   bottom: 0.08 
+           // }}
+          dragElastic={0}
+          animate={controls}
+          transition={panelTransition}
           dragDirectionLock
           dragMomentum={false}
           dragTransition={{
-            min: 0,
-            max: 0,
-            bounceStiffness: 800,
-            bounceDamping: 80,
-          }}
+            type: "tween",        
+            ease: "circOut",      
+            duration: 0.01         
+}}
           dragListener={true}
           variants={variants}
           initial="peeking"
-          animate={controls}
           style={{
             position: "fixed",
             left: "8px",
@@ -465,26 +472,25 @@ function FilterPanel({
             flexDirection: "column",
           }}
           onDragEnd={(e, info) => {
-    const swipeThreshold = 10;
-    const velocityThreshold = 30;
+  const swipeThreshold = 10;
+  const velocityThreshold = 30;
 
-    // Only allow handling structural changes if dragging DOWNward
-    if (info.velocity.y > velocityThreshold || info.offset.y > swipeThreshold) {
-      if (isOpen) {
-        onToggle(); // Triggers close mechanics back to peek state
-      }
-    } else if (info.velocity.y < -velocityThreshold || info.offset.y < -swipeThreshold) {
-      // Dragging UPward
-      if (!isOpen) {
-        onToggle(); // Only allow opening if it wasn't open already
-      } else {
-        // If already open, snap tightly back to full position layout
-        controls.start("full");
-      }
-    } else {
-      controls.start(snapState);
+  if (info.velocity.y > velocityThreshold || info.offset.y > swipeThreshold) {
+    if (isOpen) {
+      onToggle(); 
     }
-  }}
+  } else if (info.velocity.y < -velocityThreshold || info.offset.y < -swipeThreshold) {
+    if (!isOpen) {
+      onToggle();
+    } else {
+      // 💡 PASS THE TRANSITION HERE
+      controls.start("full", panelTransition); 
+    }
+  } else {
+    // 💡 PASS THE TRANSITION HERE
+    controls.start(snapState, panelTransition); 
+  }
+}}
 >
           {/* VISUAL HANDLE & TAB */}
           <div
@@ -1129,7 +1135,7 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onMinimize, onClose 
               bottom: 0.08 
             }}
             dragDirectionLock
-            dragMomentum={false} // Disable momentum to prevent physics overshoot
+            dragMomentum={true} // Disable momentum to prevent physics overshoot
             dragTransition={{
               min: 0,
               max: 0,
