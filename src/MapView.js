@@ -405,12 +405,23 @@ function FilterPanel({
       closed: { y: h + 100 },
     };
 
-    const hasActiveFilters =
-      genderFilter !== "All" ||
-      ocFilter === true ||
-      selectiveFilter === true ||
-      showFuture === true ||
-      (typeFilters && Object.values(typeFilters).some((v) => v === true));
+const allAvailableTypes = Object.keys(SCHOOL_COLORS);
+
+const hasActiveFilters = 
+  genderFilter !== "All" ||
+  ocFilter === true ||
+  selectiveFilter !== "all" ||
+  showFuture === true ||
+  // 💡 Check if the current array is different from the total list of types
+  typeFilters.length !== allAvailableTypes.length;
+
+  const handleReset = () => {
+  setGenderFilter("All");
+  setOcFilter(false);
+  setSelectiveFilter("all");
+  setShowFuture(false);
+  setTypeFilters(Object.keys(SCHOOL_COLORS)); // 💡 Resets to "All"
+};
 
     return (
       <>
@@ -464,28 +475,36 @@ function FilterPanel({
     visibility: snapState === "closed" ? "hidden" : "visible",
   }}
   onDragEnd={(e, info) => {
-    const swipeThreshold = 10;
-    const velocityThreshold = 30;
+  const swipeThreshold = 8;
+  const velocityThreshold = 16;
 
-    // Logic for DOWNWARD movement (Closing)
-    if (info.velocity.y > velocityThreshold || info.offset.y > swipeThreshold) {
-      if (isOpen) {
-        onToggle(); 
-      }
-    } 
-    // Logic for UPWARD movement (Opening/Snapping)
-    else if (info.velocity.y < -velocityThreshold || info.offset.y < -swipeThreshold) {
-      if (!isOpen) {
-        onToggle();
-      } else {
-        controls.start("full", panelTransition); 
-      }
-    } 
-    // Logic for Release (Snap back to current state)
-    else {
-      controls.start(snapState, panelTransition); 
+  // 1. Logic for DOWNWARD movement (Closing)
+  if (info.velocity.y > velocityThreshold || info.offset.y > swipeThreshold) {
+    if (snapState === "full") {
+      setSnapState("peeking");
+      controls.start("peeking", panelTransition);
+      // If you have a specific "onMinimize" for filters, call it here
+    } else if (snapState === "peeking") {
+      setSnapState("closed");
+      controls.start("closed", panelTransition);
+      if (onToggle) onToggle(); // Using onToggle to notify parent of closure
     }
-  }}
+  } 
+  // 2. Logic for UPWARD movement (Opening)
+  else if (info.velocity.y < -velocityThreshold || info.offset.y < -swipeThreshold) {
+    if (snapState === "peeking") {
+      setSnapState("full");
+      controls.start("full", panelTransition);
+    } else {
+      // Already full, snap back to maintain position
+      controls.start("full", panelTransition);
+    }
+  } 
+  // 3. Logic for Release (Snap back to current state)
+  else {
+    controls.start(snapState, panelTransition);
+  }
+}}
 >
           {/* VISUAL HANDLE & TAB */}
           <div
@@ -1150,8 +1169,8 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onMinimize, onClose 
               visibility: snapState === "closed" ? "hidden" : "visible",
             }}
             onDragEnd={(e, info) => {
-              const swipeThreshold = 10;
-              const velocityThreshold = 30;
+              const swipeThreshold = 8;
+              const velocityThreshold = 16;
 
               if (info.velocity.y > velocityThreshold || info.offset.y > swipeThreshold) {
                 // Dragged or flicked DOWN
@@ -1215,7 +1234,7 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onMinimize, onClose 
             <div
               style={{
                 height: "calc(100% - 30px)",
-                overflowY: snapState === "full" ? "auto" : "hidden",
+                overflow: "hidden",
                 paddingBottom: "100px",
                 pointerEvents: "auto",
                 flex: "1 1 auto",
