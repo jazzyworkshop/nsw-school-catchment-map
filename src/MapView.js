@@ -156,6 +156,12 @@ const SCHOOL_COLORS = {
   Other: "#E91E63",
 };
 
+const panelTransition = {
+  type: "tween",
+  ease: "circOut",
+  duration: 0.3
+};
+
 const SELECTIVE_LABELS = {
   "Fully selective": {
     label: "Fully Selective",
@@ -364,12 +370,6 @@ function FilterPanel({
   const [isTrueMobile, setIsTrueMobile] = useState(false);
   const [snapState, setSnapState] = useState("peeking");
   const controls = useAnimation();
-  const panelTransition = {
-  type: "tween",
-  ease: "circOut",
-  duration: 0.3
-};
-
   // 1. Device detection
   useEffect(() => {
     const userAgent = typeof window.navigator === "undefined" ? "" : navigator.userAgent;
@@ -433,64 +433,59 @@ function FilterPanel({
         )}
 
         <motion.div
-          drag="y"
-          dragConstraints={{ 
-              top: snapState === "full" ? 0 : -window.innerHeight, 
-              bottom: 0 
-            }}
-            // 💡 Disable elasticity at the top to prevent rubber-banding
-           //  dragElastic={{ 
-           //   top: snapState === "full" ? 0 : 0.08, 
-           //   bottom: 0.08 
-           // }}
-          dragElastic={0}
-          animate={controls}
-          transition={panelTransition}
-          dragDirectionLock
-          dragMomentum={false}
-          dragTransition={{
-            type: "tween",        
-            ease: "circOut",      
-            duration: 0.01         
-}}
-          dragListener={true}
-          variants={variants}
-          initial="peeking"
-          style={{
-            position: "fixed",
-            left: "8px",
-            right: "8px",
-            bottom: 0,
-            height: "100vh",
-            background: "white",
-            zIndex: 5000,
-            borderRadius: "24px 24px 0 0",
-            boxShadow: "0 -8px 30px rgba(0,0,0,0.15)",
-            touchAction: "none",
-            willChange: "transform",
-            display: "flex",
-            flexDirection: "column",
-          }}
-          onDragEnd={(e, info) => {
-  const swipeThreshold = 10;
-  const velocityThreshold = 30;
+  drag="y"
+  dragConstraints={{
+    top: variants.full.y,      
+    bottom: variants.peeking.y 
+  }}
+  dragElastic={0} // Completely removes "stretching" feel
+  initial="peeking"
+  animate={controls}
+  transition={panelTransition} // Handles state-driven changes (e.g., clicking the handle)
+  dragDirectionLock
+  dragMomentum={false} 
+  // 💡 REMOVED: dragTransition (not needed when using manual controls.start)
+  dragListener={true}
+  variants={variants}
+  style={{ 
+    position: "fixed",
+    left: "8px",
+    right: "8px",
+    bottom: 0,
+    height: "100vh",
+    background: "white",
+    zIndex: 5000,
+    borderRadius: "24px 24px 0 0",
+    boxShadow: "0 -8px 30px rgba(0,0,0,0.15)",
+    touchAction: "none",
+    willChange: "transform",
+    display: "flex",
+    flexDirection: "column",
+    visibility: snapState === "closed" ? "hidden" : "visible",
+  }}
+  onDragEnd={(e, info) => {
+    const swipeThreshold = 10;
+    const velocityThreshold = 30;
 
-  if (info.velocity.y > velocityThreshold || info.offset.y > swipeThreshold) {
-    if (isOpen) {
-      onToggle(); 
+    // Logic for DOWNWARD movement (Closing)
+    if (info.velocity.y > velocityThreshold || info.offset.y > swipeThreshold) {
+      if (isOpen) {
+        onToggle(); 
+      }
+    } 
+    // Logic for UPWARD movement (Opening/Snapping)
+    else if (info.velocity.y < -velocityThreshold || info.offset.y < -swipeThreshold) {
+      if (!isOpen) {
+        onToggle();
+      } else {
+        controls.start("full", panelTransition); 
+      }
+    } 
+    // Logic for Release (Snap back to current state)
+    else {
+      controls.start(snapState, panelTransition); 
     }
-  } else if (info.velocity.y < -velocityThreshold || info.offset.y < -swipeThreshold) {
-    if (!isOpen) {
-      onToggle();
-    } else {
-      // 💡 PASS THE TRANSITION HERE
-      controls.start("full", panelTransition); 
-    }
-  } else {
-    // 💡 PASS THE TRANSITION HERE
-    controls.start(snapState, panelTransition); 
-  }
-}}
+  }}
 >
           {/* VISUAL HANDLE & TAB */}
           <div
@@ -1129,19 +1124,10 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onMinimize, onClose 
               top: snapState === "full" ? 0 : -window.innerHeight, 
               bottom: 0 
             }}
-            // 💡 Disable elasticity at the top to prevent rubber-banding
-            dragElastic={{ 
-              top: snapState === "full" ? 0 : 0.08, 
-              bottom: 0.08 
-            }}
+            dragElastic={0}
             dragDirectionLock
-            dragMomentum={true} // Disable momentum to prevent physics overshoot
-            dragTransition={{
-              min: 0,
-              max: 0,
-              bounceStiffness: 500,
-              bounceDamping: 40,
-            }}
+            dragMomentum={false} // Disable momentum to prevent physics overshoot
+            transition={panelTransition}
             dragListener={true}
             variants={variants}
             initial="closed"
