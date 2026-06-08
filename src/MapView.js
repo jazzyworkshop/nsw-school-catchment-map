@@ -16,7 +16,7 @@ import "leaflet/dist/leaflet.css";
 import * as turf from "@turf/turf";
 import * as topojson from "topojson-client";
 import Fuse from "fuse.js";
-import { motion, useAnimation, AnimatePresence } from "framer-motion";
+import { motion, useAnimation } from "framer-motion";
 
 /* ────────────────────────────────────────────────────────────────
    MAP PIN ICON
@@ -442,8 +442,8 @@ function FilterPanel({
           dragTransition={{
             min: 0,
             max: 0,
-            bounceStiffness: 500,
-            bounceDamping: 40,
+            bounceStiffness: 800,
+            bounceDamping: 80,
           }}
           dragListener={true}
           variants={variants}
@@ -530,9 +530,10 @@ function FilterPanel({
             style={{
               flex: "0 1 auto",
               height: "calc(100% - 40px)",
-              overflowY: snapState === "full" ? "auto" : "hidden",
+              overflow: "hidden",
               paddingBottom: "100px",
               pointerEvents: "auto",
+              touchAction: "none",
             }}
           >
             <FilterContent
@@ -549,8 +550,6 @@ function FilterPanel({
               onClearFilters={onClearFilters}
             />
           </div>
-
-          <div style={{ flex: "1 1 auto", touchAction: "none" }} />
         </motion.div>
       </>
     );
@@ -1024,7 +1023,7 @@ function ToggleRow({ checked, onChange, label, icon, sublabel, tooltip }) {
 /* ────────────────────────────────────────────────────────────────
    SCHOOL INFO CARD
    ──────────────────────────────────────────────────────────────── */
-function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onClose }) {
+function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onMinimize, onClose }) {
   const controls = useAnimation();
   const [snapState, setSnapState] = useState("closed");
 
@@ -1057,7 +1056,7 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onClose }) {
 
   const variants = {
     peeking: { y: "65vh" },
-    full: { y: "8vh" },
+    full: { y: "10vh" },
     closed: { y: "100vh" },
   };
 
@@ -1094,7 +1093,7 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onClose }) {
         </div>
       ) : (
         /* ==========================================================================
-           2. MOBILE BOTTOM SHEET VIEW (Coordinated Lifecycle Architecture)
+           2. MOBILE BOTTOM SHEET VIEW
            ========================================================================== */
         <>
           {/* Transparent click backdrop wrapper when sheet is fully expanded */}
@@ -1112,17 +1111,25 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onClose }) {
               onClick={() => {
                 setSnapState("peeking");
                 controls.start("peeking");
-                if (onClose) onClose();
+                if (onMinimize) onMinimize(); // 💡 Minimizes to peek on backdrop click
               }}
             />
           )}
 
           <motion.div
             drag="y"
-            dragConstraints={{ top: 0, bottom: 0 }}
-            dragElastic={0.08}
+            // 💡 Dynamic constraints: Lock the top edge so it can't be dragged past FULL
+            dragConstraints={{ 
+              top: snapState === "full" ? 0 : -window.innerHeight, 
+              bottom: 0 
+            }}
+            // 💡 Disable elasticity at the top to prevent rubber-banding
+            dragElastic={{ 
+              top: snapState === "full" ? 0 : 0.08, 
+              bottom: 0.08 
+            }}
             dragDirectionLock
-            dragMomentum={true}
+            dragMomentum={false} // Disable momentum to prevent physics overshoot
             dragTransition={{
               min: 0,
               max: 0,
@@ -1146,33 +1153,34 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onClose }) {
               boxShadow: "0 -8px 30px rgba(0,0,0,0.08)",
               touchAction: "none",
               willChange: "transform",
+              display: "flex",
+              flexDirection: "column",
+              visibility: snapState === "closed" ? "hidden" : "visible",
             }}
             onDragEnd={(e, info) => {
               const swipeThreshold = 10;
               const velocityThreshold = 30;
 
-              if (
-                info.velocity.y > velocityThreshold ||
-                info.offset.y > swipeThreshold
-              ) {
+              if (info.velocity.y > velocityThreshold || info.offset.y > swipeThreshold) {
                 // Dragged or flicked DOWN
                 if (snapState === "full") {
                   setSnapState("peeking");
                   controls.start("peeking");
-                  if (onClose) onClose(); // Notify parent window layer
+                  if (onMinimize) onMinimize(); // 💡 FIX: Minimize to peek
                 } else if (snapState === "peeking") {
                   setSnapState("closed");
                   controls.start("closed");
-                  if (onClose) onClose(); // Complete collapse dismissal
+                  if (onClose) onClose(); // 💡 FIX: Dismiss completely
                 }
-              } else if (
-                info.velocity.y < -velocityThreshold ||
-                info.offset.y < -swipeThreshold
-              ) {
+              } else if (info.velocity.y < -velocityThreshold || info.offset.y < -swipeThreshold) {
                 // Dragged or flicked UP
-                setSnapState("full");
-                controls.start("full");
-                if (onOpen) onOpen(); // Notify parent window layer
+                if (snapState === "peeking") {
+                  setSnapState("full");
+                  controls.start("full");
+                  if (onOpen) onOpen(); // Notify parent window layer
+                } else {
+                  controls.start("full"); // Snap back if already full
+                }
               } else {
                 controls.start(snapState);
               }
@@ -1186,6 +1194,7 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onClose }) {
                 display: "flex",
                 justifyContent: "center",
                 cursor: "grab",
+                flexShrink: 0,
               }}
               onClick={() => {
                 if (snapState === "peeking") {
@@ -1195,7 +1204,7 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onClose }) {
                 } else {
                   setSnapState("peeking");
                   controls.start("peeking");
-                  if (onClose) onClose();
+                  if (onMinimize) onMinimize(); // 💡 Minimizes to peek on handle click
                 }
               }}
             >
@@ -1210,13 +1219,14 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onClose }) {
               />
             </div>
 
-            {/* INNER SCROLL CONTENT CONTAINER CONTAINER */}
+            {/* INNER SCROLL CONTENT CONTAINER */}
             <div
               style={{
                 height: "calc(100% - 30px)",
                 overflowY: snapState === "full" ? "auto" : "hidden",
                 paddingBottom: "100px",
                 pointerEvents: "auto",
+                flex: "1 1 auto",
               }}
             >
               {school && (
@@ -1663,6 +1673,11 @@ function MapViewInner() {
     setSelectedSchool(null);
     setSchoolCardOpen(false);
   }, []);
+
+  // 💡 NEW HOOK HANDLER: Minimizes card back to PEEK state, keeping school active (and filters hidden)
+const handleMinimizeSchoolCard = useCallback(() => {
+  setSchoolCardOpen(false);
+}, []); 
 
   // The Memoized Index
   const catchmentIndex = useMemo(() => {
@@ -2826,12 +2841,13 @@ onEachFeature={(feature, layer) => {
   </button>
 )}
 
-       <SchoolInfoCard
+      <SchoolInfoCard
   school={selectedSchool}
   isMobile={isMobile}
-  isOpen={schoolCardOpen}         // Controls if it's expanded to the top
+  isOpen={schoolCardOpen}
   onOpen={() => setSchoolCardOpen(true)}
-  onClose={handleCloseSchoolCard} // Handles sliding down and clearing selection
+  onMinimize={handleMinimizeSchoolCard} // 💡 NEW: Tells parent to collapse to peek
+  onClose={handleCloseSchoolCard}       // Tells parent to clear selection entirely
 />
         </div>{" "}
         {/* Closes mapArea */}
