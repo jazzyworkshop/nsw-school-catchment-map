@@ -443,7 +443,7 @@ const hasActiveFilters =
           />
         )}
 
-        <motion.div
+  <motion.div
   drag="y"
   dragConstraints={{
     top: variants.full.y,      
@@ -1138,11 +1138,7 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onMinimize, onClose 
 
           <motion.div
             drag="y"
-            // 💡 Dynamic constraints: Lock the top edge so it can't be dragged past FULL
-            dragConstraints={{ 
-              top: snapState === "full" ? 0 : -window.innerHeight, 
-              bottom: 0 
-            }}
+            dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={0}
             dragDirectionLock
             dragMomentum={false} // Disable momentum to prevent physics overshoot
@@ -1169,43 +1165,53 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onMinimize, onClose 
               visibility: snapState === "closed" ? "hidden" : "visible",
             }}
             onDragEnd={(e, info) => {
-              const swipeThreshold = 8;
-              const velocityThreshold = 16;
+  const swipeThreshold = 8;
+  const velocityThreshold = 16;
 
-              if (info.velocity.y > velocityThreshold || info.offset.y > swipeThreshold) {
-                // Dragged or flicked DOWN
-                if (snapState === "full") {
-                  setSnapState("peeking");
-                  controls.start("peeking");
-                  if (onMinimize) onMinimize(); // 💡 FIX: Minimize to peek
-                } else if (snapState === "peeking") {
-                  setSnapState("closed");
-                  controls.start("closed");
-                  if (onClose) onClose(); // 💡 FIX: Dismiss completely
-                }
-              } else if (info.velocity.y < -velocityThreshold || info.offset.y < -swipeThreshold) {
-                // Dragged or flicked UP
-                if (snapState === "peeking") {
-                  setSnapState("full");
-                  controls.start("full");
-                  if (onOpen) onOpen(); // Notify parent window layer
-                } else {
-                  controls.start("full"); // Snap back if already full
-                }
-              } else {
-                controls.start(snapState);
-              }
-            }}
+  // 1. DOWNWARD movement (Minimize or Close)
+  if (info.velocity.y > velocityThreshold || info.offset.y > swipeThreshold) {
+    if (snapState === "full") {
+      setSnapState("peeking");
+      // 💡 Inject panelTransition
+      controls.start("peeking", panelTransition);
+      if (onMinimize) onMinimize();
+    } else if (snapState === "peeking") {
+      setSnapState("closed");
+      // 💡 Inject panelTransition
+      controls.start("closed", panelTransition);
+      if (onClose) onClose();
+    }
+  } 
+  // 2. UPWARD movement (Expand)
+  else if (info.velocity.y < -velocityThreshold || info.offset.y < -swipeThreshold) {
+    if (snapState === "peeking") {
+      setSnapState("full");
+      // 💡 Inject panelTransition
+      controls.start("full", panelTransition);
+      if (onOpen) onOpen();
+    } else {
+      // Already full, snap back tightly
+      // 💡 Inject panelTransition
+      controls.start("full", panelTransition);
+    }
+  } 
+  // 3. Release (Snap back to current)
+  else {
+    // 💡 Inject panelTransition
+    controls.start(snapState, panelTransition);
+  }
+}}
           >
             {/* VISUAL GRAB HANDLE TAB */}
             <div
-              style={{
+             style={{
                 width: "100%",
                 height: "30px",
                 display: "flex",
                 justifyContent: "center",
                 cursor: "grab",
                 flexShrink: 0,
+                touchAction: "none",
               }}
               onClick={() => {
                 if (snapState === "peeking") {
@@ -1237,7 +1243,7 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onMinimize, onClose 
                 overflow: "hidden",
                 paddingBottom: "100px",
                 pointerEvents: "auto",
-                flex: "1 1 auto",
+                flex: "0 1 auto",
               }}
             >
               {school && (
