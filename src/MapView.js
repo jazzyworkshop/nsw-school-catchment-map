@@ -37,20 +37,17 @@ L.Marker.prototype.options.icon = DefaultIcon;
    CATCHMENT TYPE HELPERS
    ──────────────────────────────────────────────────────────────── */
 const ENABLE_FUTURE_ZONES = false;
-const isPrimaryCatchment = (f) =>
-  f?.properties?.CATCH_TYPE?.toLowerCase() === "primary";
+const isPrimaryCatchment = (f) => f?.properties?.CATCH_TYPE?.toLowerCase() === "primary";
 
-const isSecondaryCatchment = (f) => {
-  const props = f?.properties || {};
-  const searchString = `${props.CATCH_TYPE} ${props.USE_DESC}`.toLowerCase();
-  const keywords = ["high", "secondary", "central"];
-
-  return keywords.some((word) => searchString.includes(word));
+const isSecondaryCatchment = ({ properties = {} }) => {
+  const searchString = `${properties.CATCH_TYPE || ""} ${properties.USE_DESC || ""}`.toLowerCase();
+  return ["high", "secondary", "central"].some((word) => searchString.includes(word));
 };
 
+// Use Number() for faster parsing if you know input is always numeric-like
 const normalizeCode = (val) => {
-  const num = parseInt(val, 10);
-  return isNaN(num) ? null : String(num).padStart(4, "0");
+  const num = String(val).replace(/\D/g, ""); // Strips non-numeric
+  return num.length > 0 ? num.padStart(4, "0") : null;
 };
 
 /* ────────────────────────────────────────────────────────────────
@@ -103,25 +100,20 @@ function ZoomHandler({ target }) {
   const map = useMap();
 
   useEffect(() => {
-    // Ensure target exists and is a valid array with coordinates
-    if (target && target[0] !== 0 && map && typeof map.flyTo === "function") {
-      try {
-        map.stop(); // Stop any ongoing pan/zoom animations
+    // Only proceed if target is valid [lat, lng]
+    if (!target || !Array.isArray(target) || target.length < 2) return;
 
-        // It flies exactly to the mapTarget array you set in your click handlers
-        map.flyTo(target, 14, {
-          duration: 0.4,
-          easeLinearity: 0.7,
-          noMoveStart: true,
-        });
+    map.stop();
+    map.flyTo(target, 14, {
+      duration: 0.4,
+      easeLinearity: 0.7,
+      noMoveStart: true,
+    });
 
-        map.once("moveend", () => {
-          map.invalidateSize({ animate: false });
-        });
-      } catch (e) {
-        console.warn("Zoom handler animation error:", e);
-      }
-    }
+    const onMoveEnd = () => map.invalidateSize({ animate: false });
+    map.once("moveend", onMoveEnd);
+
+    return () => map.off("moveend", onMoveEnd);
   }, [target, map]);
 
   return null;
@@ -129,17 +121,8 @@ function ZoomHandler({ target }) {
 
 function MapClickHandler({ onMapClick }) {
   useMapEvents({
-    click: (e) => {
-      // Access Leaflet's native event manager directly
-      const nativeEvent = e.originalEvent;
-
-      // If the user clicked on a path, vector, marker, or SVG overlay,
-      // DO NOT clear. Leaflet attaches 'leaflet-interactive' to these elements.
-      if (nativeEvent.target.classList.contains("leaflet-interactive")) {
-        return;
-      }
-
-      // Otherwise, it's a pure background tap! Safely clear everything.
+    click(e) {
+        if (e.originalEvent._stopped) return;
       onMapClick();
     },
   });
@@ -350,6 +333,16 @@ const styles = {
 /* ────────────────────────────────────────────────────────────────
    FILTER PANEL
    ──────────────────────────────────────────────────────────────── */
+
+const PEEK_HEIGHT = 60;
+const DEFAULT_FILTERS = {
+  gender: "All",
+  oc: false,
+  selective: "all",
+  future: false,
+  types: Object.keys(SCHOOL_COLORS)
+};
+
 function FilterPanel({
   isMobile: passedIsMobile,
   isOpen,
@@ -370,59 +363,55 @@ function FilterPanel({
   const [isTrueMobile, setIsTrueMobile] = useState(false);
   const [snapState, setSnapState] = useState("peeking");
   const controls = useAnimation();
-  // 1. Device detection
-  useEffect(() => {
-    const userAgent = typeof window.navigator === "undefined" ? "" : navigator.userAgent;
-    const isMobileOS = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+ 
+  // 1. Mobile Layout Calculation (Memoized for performance)
+  const mobileLayout = useMemo(() => {
+    if (!passedIsMobile) return null;
+    const h = window.innerHeight;
+    return {
+      variants: {
+        peeking: { y: h - PEEK_HEIGHT },
+        full: { y: h * 0.12 },
+        closed: { y: h + 100 },
+      },
+    };
+  }, [passedIsMobile]);
+
+  // 2. Device detection
+useEffect(() => {
+    const isMobileOS = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     setIsTrueMobile(isMobileOS && passedIsMobile);
   }, [passedIsMobile]);
 
-  // 2. Coordinated state management
-  useEffect(() => {
-    if (isTrueMobile) {
-      if (!showFilterPeek && !isOpen) {
-        // If a school is selected, parent sets showFilterPeek to false
-        setSnapState("closed");
-        controls.start("closed");
-      } else {
-        const targetState = isOpen ? "full" : "peeking";
-        setSnapState(targetState);
-        controls.start(targetState);
-      }
-    }
+  // 3. Coordinated state management
+useEffect(() => {
+    if (!isTrueMobile) return;
+    const targetState = !showFilterPeek && !isOpen ? "closed" : (isOpen ? "full" : "peeking");
+    setSnapState(targetState);
+    controls.start(targetState, panelTransition);
   }, [isOpen, showFilterPeek, isTrueMobile, controls]);
 
   /* ==========================================================================
      1. MOBILE DRAWER LAYOUT
      ========================================================================== */
-  if (isTrueMobile) {
-    const PEEK_HEIGHT = 60;
-    const h = window.innerHeight;
 
-    const variants = {
-      peeking: { y: h - PEEK_HEIGHT },
-      full: { y: h * 0.12 },
-      closed: { y: h + 100 },
-    };
+const hasActiveFilters = useMemo(() => 
+    genderFilter !== "All" ||
+    ocFilter ||
+    selectiveFilter !== "all" ||
+    showFuture ||
+    typeFilters.length !== Object.keys(SCHOOL_COLORS).length
+  , [genderFilter, ocFilter, selectiveFilter, showFuture, typeFilters]);
 
-const allAvailableTypes = Object.keys(SCHOOL_COLORS);
-
-const hasActiveFilters = 
-  genderFilter !== "All" ||
-  ocFilter === true ||
-  selectiveFilter !== "all" ||
-  showFuture === true ||
-  // 💡 Check if the current array is different from the total list of types
-  typeFilters.length !== allAvailableTypes.length;
-
-  const handleReset = () => {
-  setGenderFilter("All");
-  setOcFilter(false);
-  setSelectiveFilter("all");
-  setShowFuture(false);
-  setTypeFilters(Object.keys(SCHOOL_COLORS)); // 💡 Resets to "All"
+const handleReset = () => {
+  setGenderFilter(DEFAULT_FILTERS.gender);
+  setOcFilter(DEFAULT_FILTERS.oc);
+  setSelectiveFilter(DEFAULT_FILTERS.selective);
+  setShowFuture(DEFAULT_FILTERS.future);
+  setTypeFilters(DEFAULT_FILTERS.types);
 };
 
+if (isTrueMobile && mobileLayout) {
     return (
       <>
         {/* Backdrop for the Filter Panel when in FULL state */}
@@ -446,8 +435,8 @@ const hasActiveFilters =
   <motion.div
   drag="y"
   dragConstraints={{
-    top: variants.full.y,      
-    bottom: variants.peeking.y 
+    top: mobileLayout?.variants.full.y ?? 0,
+    bottom: mobileLayout?.variants.peeking.y ?? 0
   }}
   dragElastic={0} // Completely removes "stretching" feel
   initial="peeking"
@@ -457,7 +446,7 @@ const hasActiveFilters =
   dragMomentum={false} 
   // 💡 REMOVED: dragTransition (not needed when using manual controls.start)
   dragListener={true}
-  variants={variants}
+  variants={mobileLayout?.variants}
   style={{ 
     position: "fixed",
     left: "8px",
@@ -1047,18 +1036,21 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onMinimize, onClose 
   const controls = useAnimation();
   const [snapState, setSnapState] = useState("closed");
 
-  // Synchronize layout animations with lifecycle changes
-  useEffect(() => {
-    if (!isMobile) return;
+  const variants = useMemo(() => {
+    const h = typeof window !== "undefined" ? window.innerHeight : 800;
+    return {
+      peeking: { y: h * 0.65 },
+      full: { y: h * 0.12 },
+      closed: { y: h + 100 },
+    };
+  }, []);
 
-    if (!school) {
-      setSnapState("closed");
-      controls.start("closed");
-    } else {
-      const targetState = isOpen ? "full" : "peeking";
-      setSnapState(targetState);
-      controls.start(targetState);
-    }
+  // Synchronize layout animations with lifecycle changes
+useEffect(() => {
+    if (!isMobile) return;
+    const targetState = !school ? "closed" : (isOpen ? "full" : "peeking");
+    setSnapState(targetState);
+    controls.start(targetState, panelTransition);
   }, [school, isOpen, isMobile, controls]);
 
   // Compute school branding color profiles safely if school exists
@@ -1074,13 +1066,7 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onMinimize, onClose 
     typeColor = SCHOOL_COLORS.Other || "#888";
   }
 
-  const variants = {
-    peeking: { y: "65vh" },
-    full: { y: "10vh" },
-    closed: { y: "100vh" },
-  };
-
-  // Render nothing on desktop if no active data profile is selected
+   // Render nothing on desktop if no active data profile is selected
   if (!isMobile && !school) return null;
 
   return (
@@ -1138,7 +1124,7 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onMinimize, onClose 
 
           <motion.div
             drag="y"
-            dragConstraints={{ top: 0, bottom: 0 }}
+            dragConstraints={{ top: variants.full.y, bottom: variants.peeking.y }}
             dragElastic={0}
             dragDirectionLock
             dragMomentum={false} // Disable momentum to prevent physics overshoot
@@ -1164,43 +1150,24 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onMinimize, onClose 
               flexDirection: "column",
               visibility: snapState === "closed" ? "hidden" : "visible",
             }}
-            onDragEnd={(e, info) => {
-  const swipeThreshold = 8;
-  const velocityThreshold = 16;
+onDragEnd={(e, info) => {
+              const swipeThreshold = 8;
+              const velocityThreshold = 16;
 
-  // 1. DOWNWARD movement (Minimize or Close)
-  if (info.velocity.y > velocityThreshold || info.offset.y > swipeThreshold) {
-    if (snapState === "full") {
-      setSnapState("peeking");
-      // 💡 Inject panelTransition
-      controls.start("peeking", panelTransition);
-      if (onMinimize) onMinimize();
-    } else if (snapState === "peeking") {
-      setSnapState("closed");
-      // 💡 Inject panelTransition
-      controls.start("closed", panelTransition);
-      if (onClose) onClose();
-    }
-  } 
-  // 2. UPWARD movement (Expand)
-  else if (info.velocity.y < -velocityThreshold || info.offset.y < -swipeThreshold) {
-    if (snapState === "peeking") {
-      setSnapState("full");
-      // 💡 Inject panelTransition
-      controls.start("full", panelTransition);
-      if (onOpen) onOpen();
-    } else {
-      // Already full, snap back tightly
-      // 💡 Inject panelTransition
-      controls.start("full", panelTransition);
-    }
-  } 
-  // 3. Release (Snap back to current)
-  else {
-    // 💡 Inject panelTransition
-    controls.start(snapState, panelTransition);
-  }
-}}
+              if (info.velocity.y > velocityThreshold || info.offset.y > swipeThreshold) {
+                const nextState = snapState === "full" ? "peeking" : "closed";
+                setSnapState(nextState);
+                controls.start(nextState, panelTransition);
+                if (nextState === "peeking" && onMinimize) onMinimize();
+                if (nextState === "closed" && onClose) onClose();
+              } else if (info.velocity.y < -velocityThreshold || info.offset.y < -swipeThreshold) {
+                setSnapState("full");
+                controls.start("full", panelTransition);
+                if (onOpen) onOpen();
+              } else {
+                controls.start(snapState, panelTransition);
+              }
+            }}
           >
             {/* VISUAL GRAB HANDLE TAB */}
             <div
@@ -1214,15 +1181,11 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onMinimize, onClose 
                 touchAction: "none",
               }}
               onClick={() => {
-                if (snapState === "peeking") {
-                  setSnapState("full");
-                  controls.start("full");
-                  if (onOpen) onOpen();
-                } else {
-                  setSnapState("peeking");
-                  controls.start("peeking");
-                  if (onMinimize) onMinimize(); // 💡 Minimizes to peek on handle click
-                }
+                const nextState = snapState === "peeking" ? "full" : "peeking";
+                setSnapState(nextState);
+                controls.start(nextState, panelTransition);
+                if (nextState === "full" && onOpen) onOpen();
+                if (nextState === "peeking" && onMinimize) onMinimize();
               }}
             >
               <div
@@ -1241,7 +1204,7 @@ function SchoolInfoCard({ school, isMobile, isOpen, onOpen, onMinimize, onClose 
               style={{
                 height: "calc(100% - 30px)",
                 overflow: "hidden",
-                paddingBottom: "100px",
+                // paddingBottom: "100px",
                 pointerEvents: "auto",
                 flex: "0 1 auto",
               }}
@@ -1642,8 +1605,8 @@ function MapViewInner() {
     return () => mediaQuery.removeEventListener("change", handleDeviceChange);
   }, []);
 
-  const [typeFilters, setTypeFilters] = useState(Object.keys(SCHOOL_COLORS));
-  const [genderFilter, setGenderFilter] = useState("All");
+const [genderFilter, setGenderFilter] = useState(DEFAULT_FILTERS.gender);
+const [typeFilters, setTypeFilters] = useState(DEFAULT_FILTERS.types);
   const [ocFilter, setOcFilter] = useState(false);
   const [selectiveFilter, setSelectiveFilter] = useState("all");
   const [showFuture, setShowFuture] = useState(false);
