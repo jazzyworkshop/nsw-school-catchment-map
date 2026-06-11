@@ -1226,326 +1226,126 @@ onDragEnd={(e, info) => {
 }
 
 // 2. THE CONTENT ENGINE
+const ICSEA_LEVELS = [
+  { min: 1200, label: "Very High", color: "#006400", textColor: "white" },
+  { min: 1100, label: "High", color: "#4CAF50", textColor: "white" },
+  { min: 900, label: "Average", color: "#FFD700", textColor: "black" },
+  { min: 700, label: "Low", color: "#FF8C00", textColor: "white" },
+  { min: 0, label: "Very Low", color: "#D32F2F", textColor: "white" }
+];
+
+const getIcseaInfo = (value) => {
+  const num = Number(value);
+  if (isNaN(num)) return { label: "n/a", color: "#f5f5f5", textColor: "#888", val: "n/a" };
+  const level = ICSEA_LEVELS.find(l => num >= l.min) || ICSEA_LEVELS[4];
+  return { ...level, val: num };
+};
+
+const InfoRow = ({ label, children }) => (
+  <div style={{ display: "flex", flexDirection: "column", padding: "8px 18px", borderBottom: "1px solid #f3f3f3" }}>
+    <span style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: "#888", marginBottom: 3 }}>{label}</span>
+    <span style={{ fontSize: "13px", color: "#222", fontWeight: 500 }}>{children}</span>
+  </div>
+);
+
+/* ────────────────────────────────────────────────────────────────
+   COMPONENT
+   ──────────────────────────────────────────────────────────────── */
 function CardBody({ school, typeColor, onClose, isMobile }) {
-  const mySchoolUrl = `https://www.myschool.edu.au/search?schoolName=${encodeURIComponent(school.name)}&suburb=${encodeURIComponent(school.suburb)}`;
-  const schoolWebsite = school.url
-    ? school.url.startsWith("http")
-      ? school.url
-      : `https://${school.url}`
-    : "#";
-  const schoolFinderUrl = `https://schoolfinder.education.nsw.gov.au/index.php?schoolCode=${school.code}`;
-  const betterEducationUrl =
-    "https://bettereducation.com.au/school/secondary/nsw/sydney-high-school-rankings.aspx";
-
-  const genderDisplay =
-    { Coed: "Co-ed", Boys: "Boys", Girls: "Girls" }[school.gender] ||
-    school.gender ||
-    "n/a";
-  const ocDisplay =
-    school.oc && school.oc !== "N" ? "Yes (OC classes available)" : "n/a";
-  const selectiveDisplay =
-    school.selective && !["No", ""].includes(school.selective)
-      ? school.selective
-      : "No";
-
-  // Note: Ensure SELECTIVE_LABELS is defined in your outer scope or imports
-  const selectiveInfo = (typeof SELECTIVE_LABELS !== "undefined" &&
-    SELECTIVE_LABELS[selectiveDisplay]) || {
-    label: selectiveDisplay,
-    color: "#666",
-    bg: "transparent",
-  };
-
-  const enrolmentDisplay = school.enrolment
-    ? `${Math.round(school.enrolment).toLocaleString()} Students`
-    : "n/a";
-
-  const getIcseaInfo = (value) => {
-    if (!value)
-      return { label: "n/a", color: "#f5f5f5", textColor: "#888", val: "n/a" };
-    const num = Number(value);
-    if (num >= 1200)
-      return {
-        label: "Very High",
-        color: "#006400",
-        textColor: "white",
-        val: num,
-      };
-    if (num >= 1100)
-      return { label: "High", color: "#4CAF50", textColor: "white", val: num };
-    if (num >= 900)
-      return {
-        label: "Average",
-        color: "#FFD700",
-        textColor: "black",
-        val: num,
-      };
-    if (num >= 700)
-      return { label: "Low", color: "#FF8C00", textColor: "white", val: num };
+  const data = useMemo(() => {
+    if (!school) return {};
     return {
-      label: "Very Low",
-      color: "#D32F2F",
-      textColor: "white",
-      val: num,
+      name: school.name,
+      website: school.url?.startsWith("http") ? school.url : `https://${school.url}`,
+      suburb: school.suburb,
+      gender: { Coed: "Co-ed", Boys: "Boys", Girls: "Girls" }[school.gender] || school.gender || "n/a",
+      enrolment: school.enrolment ? `${Math.round(school.enrolment).toLocaleString()} Students` : "n/a",
+      icsea: getIcseaInfo(school.icsea),
+      selective: (typeof SELECTIVE_LABELS !== "undefined" && SELECTIVE_LABELS[school.selective]) || { label: school.selective || "No", color: "#666", bg: "transparent" },
+      oc: school.oc && school.oc !== "N" ? "Yes (OC classes available)" : "n/a",
+      mySchool: {
+    url: `https://www.myschool.edu.au/search?schoolName=${encodeURIComponent(school.name)}`,
+    label: "MySchool ↗",
+    desc: "NAPLAN, ATAR insights & school profile"
+  },
+  betterEducation: {
+    url: "https://bettereducation.com.au/school/secondary/nsw/sydney-high-school-rankings.aspx",
+    label: "Better Education ↗"
+  },
+  schoolFinder: {
+    url: `https://schoolfinder.education.nsw.gov.au/index.php?schoolCode=${school.code}`,
+    label: "School Finder ↗"
+  }
     };
-  };
-  const icsea = getIcseaInfo(school.icsea);
-
-  const infoRowStyle = {
-    display: "flex",
-    flexDirection: "column",
-    padding: "8px 18px",
-    borderBottom: "1px solid #f3f3f3",
-  };
-  const labelStyle = {
-    fontSize: "11px",
-    textTransform: "uppercase",
-    letterSpacing: "0.06em",
-    color: "#888",
-    marginBottom: 3,
-  };
-  const valueStyle = { fontSize: "13px", color: "#222", fontWeight: 500 };
+  }, [school]);
 
   const handleDomainSearch = () => {
-    const suburbSlug = String(school.suburb || "")
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, "-");
-    window.open(
-      `https://www.domain.com.au/suburb-profile/${suburbSlug}-nsw-${school.postcode}`,
-      "_blank",
-    );
+    const slug = String(school.suburb || "").trim().toLowerCase().replace(/\s+/g, "-");
+    window.open(`https://www.domain.com.au/suburb-profile/${slug}-nsw-${school.postcode}`, "_blank");
   };
 
   return (
     <>
-      <div
-        style={{
-          borderTop: `4px solid ${typeColor}`,
-          padding: isMobile ? "12px 16px" : "14px 18px",
-          borderBottom: "1px solid #f0f0f0",
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: "12px",
-          backgroundColor: "white",
-          borderRadius: "24px 24px 0 0",
-        }}
-      >
+      {/* HEADER */}
+      <div style={{ borderTop: `4px solid ${typeColor}`, padding: isMobile ? "12px 16px" : "14px 18px", display: "flex", justifyContent: "space-between", gap: "12px", backgroundColor: "white" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <a
-            href={schoolWebsite}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              color: "#002b5c",
-              fontSize: isMobile ? "15px" : "17px",
-              fontWeight: 800,
-              textDecoration: "none",
-              lineHeight: 1.2,
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              wordBreak: "break-word",
-            }}
-          >
-            {school.name}
-            <span
-              style={{
-                display: "inline-block",
-                fontSize: "11px",
-                marginLeft: "4px",
-                verticalAlign: "middle",
-                opacity: 0.6,
-              }}
-            >
-              ↗
-            </span>
+          <a href={data.website} target="_blank" rel="noopener noreferrer" style={{ color: "#002b5c", fontSize: isMobile ? "15px" : "17px", fontWeight: 800, textDecoration: "none" }}>
+            {data.name} <span style={{ opacity: 0.6 }}>↗</span>
           </a>
-
-          <div
-            style={{
-              fontSize: "12px",
-              color: "#666",
-              marginTop: "4px",
-              fontWeight: 500,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {school.suburb}
-          </div>
+          <div style={{ fontSize: "12px", color: "#666", marginTop: "4px" }}>{data.suburb}</div>
         </div>
-
-        <button
-          onClick={onClose}
-          style={{
-            border: "none",
-            background: "#f5f5f5",
-            borderRadius: "50%",
-            width: "30px",
-            height: "30px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "16px",
-            cursor: "pointer",
-            color: "#888",
-            flexShrink: 0,
-            touchAction: "manipulation",
-          }}
-        >
-          ✕
-        </button>
+        <button onClick={onClose} style={{ border: "none", background: "#f5f5f5", borderRadius: "50%", width: "30px", height: "30px", cursor: "pointer" }}>✕</button>
       </div>
 
+      {/* BODY */}
       <div style={{ paddingTop: 6 }}>
-        <div style={infoRowStyle}>
-          <span style={labelStyle}>School type</span>
-          <span style={valueStyle}>
-            <span
-              style={{
-                display: "inline-block",
-                width: 10,
-                height: 10,
-                borderRadius: "50%",
-                background: typeColor,
-                marginRight: 6,
-              }}
-            />
+        <InfoRow label="School type">
+            <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: typeColor, marginRight: 6 }} />
             {school.level || "n/a"}
-          </span>
-        </div>
-        <div style={infoRowStyle}>
-          <span style={labelStyle}>OC classes</span>
-          <span style={valueStyle}>{ocDisplay}</span>
-        </div>
-        <div style={infoRowStyle}>
-          <span style={labelStyle}>Gender</span>
-          <span style={valueStyle}>{genderDisplay}</span>
-        </div>
-        <div style={infoRowStyle}>
-          <span style={labelStyle}>Selective</span>
-          <span
-            style={{
-              ...valueStyle,
-              color: selectiveInfo.color,
-              backgroundColor: selectiveInfo.bg,
-              padding: selectiveInfo.bg !== "transparent" ? "2px 8px" : "0",
-              borderRadius: "4px",
-              display: "inline-block",
-            }}
-          >
-            {selectiveInfo.label}
-          </span>
-        </div>
-        <div style={infoRowStyle}>
-          <span style={labelStyle}>Enrolment</span>
-          <span style={valueStyle}>{enrolmentDisplay}</span>
-        </div>
-
-        <div style={infoRowStyle}>
-          <span style={labelStyle}>School Community Advantage (ICSEA)</span>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              marginTop: "2px",
-            }}
-          >
-            <span style={valueStyle}>ICSEA Score: {icsea.val}</span>
-            <span
-              style={{
-                fontSize: "10px",
-                fontWeight: "800",
-                padding: "2px 6px",
-                borderRadius: "4px",
-                backgroundColor: icsea.color,
-                color: icsea.textColor,
-                textTransform: "uppercase",
-              }}
-            >
-              {icsea.label}
+        </InfoRow>
+        <InfoRow label="OC classes">{data.oc}</InfoRow>
+        <InfoRow label="Gender">{data.gender}</InfoRow>
+        <InfoRow label="Selective">
+           <span style={{ color: data.selective.color, backgroundColor: data.selective.bg, padding: data.selective.bg !== "transparent" ? "2px 8px" : "0", borderRadius: "4px" }}>
+             {data.selective.label}
+           </span>
+        </InfoRow>
+        <InfoRow label="Enrolment">{data.enrolment}</InfoRow>
+        <InfoRow label="School Community Advantage (ICSEA)">
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            ICSEA Score: {data.icsea.val}
+            <span style={{ fontSize: "10px", fontWeight: "800", padding: "2px 6px", borderRadius: "4px", backgroundColor: data.icsea.color, color: data.icsea.textColor }}>
+              {data.icsea.label}
             </span>
           </div>
-        </div>
-        {/* ------------------------------- */}
+        </InfoRow>
 
-        <div style={infoRowStyle}>
-          <span style={labelStyle}>Academic results & programs</span>
-          <span style={valueStyle}>
-            <a
-              href={mySchoolUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "#1E88E5", textDecoration: "none" }}
-            >
-              MySchool ↗
-            </a>
-            <span
-              style={{
-                display: "block",
-                fontSize: "11px",
-                color: "#666",
-                marginTop: 2,
-              }}
-            >
-              NAPLAN, ATAR insights & school profile
-            </span>
-          </span>
-        </div>
-        <div style={infoRowStyle}>
-          <span style={labelStyle}>HSC rankings</span>
-          <span style={valueStyle}>
-            <a
-              href={betterEducationUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "#1E88E5", textDecoration: "none" }}
-            >
-              Better Education ↗
-            </a>
-          </span>
-        </div>
+        {/* EXTERNAL LINKS */}
+<InfoRow label="Academic results & programs">
+  <a href={data.mySchool.url} target="_blank" rel="noopener noreferrer" style={{ color: "#1E88E5", textDecoration: "none" }}>
+    {data.mySchool.label}
+  </a>
+  <span style={{ display: "block", fontSize: "11px", color: "#666", marginTop: 2 }}>
+    {data.mySchool.desc}
+  </span>
+</InfoRow>
 
+<InfoRow label="HSC rankings">
+  <a href={data.betterEducation.url} target="_blank" rel="noopener noreferrer" style={{ color: "#1E88E5", textDecoration: "none" }}>
+    {data.betterEducation.label}
+  </a>
+</InfoRow>
+
+<InfoRow label="Verify data on official website">
+  <a href={data.schoolFinder.url} target="_blank" rel="noopener noreferrer" style={{ color: "#1E88E5", textDecoration: "none" }}>
+    {data.schoolFinder.label}
+  </a>
+</InfoRow>
+        
         <div style={{ padding: "12px 18px" }}>
-          <button
-            onClick={handleDomainSearch}
-            style={{
-              backgroundColor: "#009a44",
-              color: "white",
-              padding: "12px 16px",
-              borderRadius: "8px",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: "600",
-              width: "100%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "10px",
-            }}
-          >
+          <button onClick={handleDomainSearch} style={{ backgroundColor: "#009a44", color: "white", padding: "12px", borderRadius: "8px", border: "none", width: "100%", fontWeight: 600 }}>
             📊 {school.suburb} Suburb Profile & Rentals
           </button>
-        </div>
-
-        <div style={infoRowStyle}>
-          <span style={labelStyle}>Verify data on official website</span>
-          <span style={valueStyle}>
-            <a
-              href={schoolFinderUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "#1E88E5", textDecoration: "none" }}
-            >
-              School Finder ↗
-            </a>
-          </span>
         </div>
       </div>
     </>
@@ -2614,9 +2414,9 @@ const handleMinimizeSchoolCard = useCallback(() => {
   {!isMobile && <ZoomControl position="bottomright" />}
   <ZoomHandler target={mapTarget} />
 
-  {activeCatchment && (
+  {activeCatchment?.features?.length > 0 && (
     <GeoJSON
-      key={`active-${activeCatchment?.features?.[0]?.properties?.USE_ID || "none"}`}
+      key={activeCatchment.features[0].properties.USE_ID}
       data={activeCatchment}
       smoothFactor={0}
       style={{
@@ -2826,8 +2626,8 @@ onEachFeature={(feature, layer) => {
   isMobile={isMobile}
   isOpen={schoolCardOpen}
   onOpen={() => setSchoolCardOpen(true)}
-  onMinimize={handleMinimizeSchoolCard} // 💡 NEW: Tells parent to collapse to peek
-  onClose={handleCloseSchoolCard}       // Tells parent to clear selection entirely
+  onMinimize={handleMinimizeSchoolCard} 
+  onClose={handleCloseSchoolCard}       
 />
         </div>{" "}
         {/* Closes mapArea */}
