@@ -1395,25 +1395,18 @@ function MapViewInner() {
   const [activeCatchment, setActiveCatchment] = useState(null);
   const navigate = useNavigate();
   const { schoolSlug } = useParams();
-
   const [futureCatchments, setFutureCatchments] = useState(null);
   const [mapTarget, setMapTarget] = useState(null);
   const [loading, setLoading] = useState(true);
-
   const [searchForcedSchool, setSearchForcedSchool] = useState(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [showResults, setShowResults] = useState(false);
-
-  // 💡 NEW STATE: Manages FULL expanded layout state for the School Info Card bottom sheet
   const [schoolCardOpen, setSchoolCardOpen] = useState(false);
-
-  // Robust device width & OS matching layer
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 1024px)");
     const userAgent = typeof window.navigator === "undefined" ? "" : navigator.userAgent;
     const isMobileOS = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
-    
     const handleDeviceChange = (e) => {
       setIsMobile(e.matches && isMobileOS);
     };
@@ -1423,8 +1416,8 @@ function MapViewInner() {
     return () => mediaQuery.removeEventListener("change", handleDeviceChange);
   }, []);
 
-const [genderFilter, setGenderFilter] = useState(DEFAULT_FILTERS.gender);
-const [typeFilters, setTypeFilters] = useState(DEFAULT_FILTERS.types);
+  const [genderFilter, setGenderFilter] = useState(DEFAULT_FILTERS.gender);
+  const [typeFilters, setTypeFilters] = useState(DEFAULT_FILTERS.types);
   const [ocFilter, setOcFilter] = useState(false);
   const [selectiveFilter, setSelectiveFilter] = useState("all");
   const [showFuture, setShowFuture] = useState(false);
@@ -1442,7 +1435,7 @@ const [typeFilters, setTypeFilters] = useState(DEFAULT_FILTERS.types);
   // Derived peek bar visibility: Hide filter peek when a school is open or address is marked
   const showFilterPeek = selectedSchool === null && addressMarker === null;
 
-  // 💡 COORDINATED FILTER TOGGLE FUNCTION (Updated for Coordinated Architecture)
+  // COORDINATED FILTER TOGGLE FUNCTION (Updated for Coordinated Architecture)
   const handleToggleFilter = useCallback(() => {
     setFilterOpen((prev) => {
       const nextState = !prev;
@@ -1820,7 +1813,7 @@ const handleMinimizeSchoolCard = useCallback(() => {
 
           mode: "cors", // Explicitly ask for Cross-Origin Resource Sharing
           cache: "no-cache", // Tells the Service Worker NOT to use a stale/broken cache
-          credentials: "omit", // Nominatim doesn't need cookies; this reduces overhead
+          credentials: "omit", 
 
           headers: {
             "Accept-Language": "en",
