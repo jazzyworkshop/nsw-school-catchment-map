@@ -403,7 +403,7 @@ const hasActiveFilters = useMemo(() =>
     typeFilters.length !== Object.keys(SCHOOL_COLORS).length
   , [genderFilter, ocFilter, selectiveFilter, showFuture, typeFilters]);
 
-const handleReset = () => {
+const _handleReset = () => {
   setGenderFilter(DEFAULT_FILTERS.gender);
   setOcFilter(DEFAULT_FILTERS.oc);
   setSelectiveFilter(DEFAULT_FILTERS.selective);
@@ -1453,7 +1453,7 @@ function MapViewInner() {
   }, []);
 
   // 💡 HOOK HANDLER: Call this whenever a school node item is selected on the map or search bar
-  const handleSelectSchool = useCallback((schoolItem) => {
+  const _handleSelectSchool = useCallback((schoolItem) => {
     setFilterOpen(false);      // Close filters expanded layout view
     setSelectedSchool(schoolItem);
     setSchoolCardOpen(false);   // Reset card sheet layout back to PEEK state on clear selection
