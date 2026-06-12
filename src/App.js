@@ -1,22 +1,42 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import MapView from './MapView';
+import React, { Suspense, lazy } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import './App.css';
+
+// 1. LAZY LOAD MAPVIEW: Keeps initial bundle size tiny
+const MapView = lazy(() => import('./MapView'));
+
+// 2. LOADING STATE: Displays smoothly while MapView chunks are fetched
+const MapLoader = () => (
+  <div style={{ 
+    display: 'flex', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    height: '100vh', 
+    fontFamily: 'sans-serif',
+    color: '#002b5c', 
+    fontWeight: 600 
+  }}>
+    Loading Map Engine...
+  </div>
+);
 
 function App() {
   return (
     <Router>
       <div className="App">
-        <Routes>
-          {/* This matches the home page */}
-          <Route path="/" element={<MapView />} />
-          
-          {/* This matches specific school pages for SEO */}
-          <Route path="/catchment/:schoolSlug" element={<MapView />} />
-          
-          {/* Fallback route to redirect any typos back to the home map */}
-          <Route path="*" element={<MapView />} />
-        </Routes>
+        {/* Suspense coordinates with the lazy loader seamlessly */}
+        <Suspense fallback={<MapLoader />}>
+          <Routes>
+            {/* Home view */}
+            <Route path="/" element={<MapView />} />
+            
+            {/* SEO Deep-links */}
+            <Route path="/catchment/:schoolSlug" element={<MapView />} />
+            
+            {/* 3. TRUE REDIRECT: Changes URL bar back to home if a typo occurs */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </div>
     </Router>
   );

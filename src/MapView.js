@@ -1252,9 +1252,24 @@ const InfoRow = ({ label, children }) => (
    COMPONENT
    ──────────────────────────────────────────────────────────────── */
 function CardBody({ school, typeColor, onClose, isMobile }) {
+  
   const data = useMemo(() => {
-    if (!school) return {};
+    // If no school is selected, return a safe, empty object structure
+    if (!school) {
+      return {
+        visible: false,
+        name: "", website: "", suburb: "", gender: "", enrolment: "", oc: "",
+        icsea: { val: "n/a", label: "n/a", color: "#f5f5f5", textColor: "#888" },
+        selective: { label: "No", color: "#666", bg: "transparent" },
+        mySchool: { url: "#", label: "", desc: "" },
+        betterEducation: { url: "#", label: "" },
+        schoolFinder: { url: "#", label: "" }
+      };
+    }
+
+    // When a school exists, calculate all production data safely
     return {
+      visible: true,
       name: school.name,
       website: school.url?.startsWith("http") ? school.url : `https://${school.url}`,
       suburb: school.suburb,
@@ -1264,20 +1279,23 @@ function CardBody({ school, typeColor, onClose, isMobile }) {
       selective: (typeof SELECTIVE_LABELS !== "undefined" && SELECTIVE_LABELS[school.selective]) || { label: school.selective || "No", color: "#666", bg: "transparent" },
       oc: school.oc && school.oc !== "N" ? "Yes (OC classes available)" : "n/a",
       mySchool: {
-    url: `https://www.myschool.edu.au/search?schoolName=${encodeURIComponent(school.name)}`,
-    label: "MySchool ↗",
-    desc: "NAPLAN, ATAR insights & school profile"
-  },
-  betterEducation: {
-    url: "https://bettereducation.com.au/school/secondary/nsw/sydney-high-school-rankings.aspx",
-    label: "Better Education ↗"
-  },
-  schoolFinder: {
-    url: `https://schoolfinder.education.nsw.gov.au/index.php?schoolCode=${school.code}`,
-    label: "School Finder ↗"
-  }
+        url: `https://www.myschool.edu.au/search?schoolName=${encodeURIComponent(school.name)}`,
+        label: "MySchool ↗",
+        desc: "NAPLAN, ATAR insights & school profile"
+      },
+      betterEducation: {
+        url: "https://bettereducation.com.au/school/secondary/nsw/sydney-high-school-rankings.aspx", // Modify if mapping dynamic urls later
+        label: "Better Education ↗"
+      },
+      schoolFinder: {
+        url: `https://schoolfinder.education.nsw.gov.au/index.php?schoolCode=${school.code}`,
+        label: "School Finder ↗"
+      }
     };
   }, [school]);
+
+  // Use the memoized visibility flag to decide if the card should render UI
+  if (!data.visible) return null;
 
   const handleDomainSearch = () => {
     const slug = String(school.suburb || "").trim().toLowerCase().replace(/\s+/g, "-");
