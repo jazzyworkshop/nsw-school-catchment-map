@@ -18,6 +18,14 @@ import * as topojson from "topojson-client";
 import Fuse from "fuse.js";
 import { motion, useAnimation } from "framer-motion";
 
+delete L.Icon.Default.prototype._getIconUrl;
+
+L.Icon.Default.mergeOptions({
+  iconUrl: markerIcon,
+  iconRetinaUrl: markerIcon2x,
+  shadowUrl: markerShadow,
+});
+
 /* ────────────────────────────────────────────────────────────────
    MAP PIN ICON
    ──────────────────────────────────────────────────────────────── */
