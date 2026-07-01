@@ -2170,8 +2170,10 @@ const handleMinimizeSchoolCard = useCallback(() => {
         .search-item:hover { background: #f5f7ff !important; }               
       `}</style>
       <div style={{ ...styles.appShell, willChange: "transform" }}>
+       
         {/* HEADER */}
-<header style={styles.header}>
+<header style={{ ...styles.header, position: "relative" }}>
+  {/* MAIN CENTERED HEADINGS */}
   <div
     style={{
       flex: 1,
@@ -2180,6 +2182,7 @@ const handleMinimizeSchoolCard = useCallback(() => {
       alignItems: "center",
       justifyContent: "center",
       textAlign: "center",
+      paddingBottom: "0", // Reset to 0 ensures perfect Y-axis centering on mobile
     }}
   >
     <h1
@@ -2203,7 +2206,82 @@ const handleMinimizeSchoolCard = useCallback(() => {
       Find your local school catchment area | NSW
     </p>
   </div>
+
+  {/* RESPONSIVE NAVIGATION INTERFACE */}
+  {isMobile ? (
+    <>
+      {/* Mobile: Privacy attached to the far left wall */}
+      <div style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-130%)", display: "flex" }}>
+        <a
+          href="/privacy"
+          style={{
+            color: "inherit",
+            fontSize: "11px",
+            textDecoration: "underline",
+            opacity: 0.85,
+            fontWeight: 500,
+          }}
+        >
+          Privacy
+        </a>
+      </div>
+
+      {/* Mobile: About attached to the far right wall */}
+      <div style={{ position: "absolute", right: "14px", top: "50%", transform: "translateY(-130%)", display: "flex" }}>
+        <a
+          href="/about"
+          style={{
+            color: "inherit",
+            fontSize: "11px",
+            textDecoration: "underline",
+            opacity: 0.85,
+            fontWeight: 500,
+          }}
+        >
+          About
+        </a>
+      </div>
+    </>
+  ) : (
+    /* Desktop: Standard side-by-side arrangement safely on the right */
+    <nav
+      style={{
+        position: "absolute",
+        right: "24px",
+        top: "50%",
+        transform: "translateY(-50%)",
+        display: "flex",
+        gap: "16px",
+      }}
+    >
+      <a
+        href="/about"
+        style={{
+          color: "inherit",
+          fontSize: "13px",
+          textDecoration: "underline",
+          opacity: 0.85,
+          fontWeight: 500,
+        }}
+      >
+        About the Data
+      </a>
+      <a
+        href="/privacy"
+        style={{
+          color: "inherit",
+          fontSize: "13px",
+          textDecoration: "underline",
+          opacity: 0.85,
+          fontWeight: 500,
+        }}
+      >
+        Privacy
+      </a>
+    </nav>
+  )}
 </header>
+
         {/* MAP AREA */}
         <div style={styles.mapArea}>
           {/* Search bar wrapper with dynamic positioning */}

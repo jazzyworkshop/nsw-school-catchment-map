@@ -4,6 +4,8 @@ import './App.css';
 
 // 1. LAZY LOAD MAPVIEW: Keeps initial bundle size tiny
 const MapView = lazy(() => import('./MapView'));
+const About = lazy(() => import('./About'));
+const Privacy = lazy(() => import('./Privacy'));
 
 // 2. LOADING STATE: Displays smoothly while MapView chunks are fetched
 const MapLoader = () => (
@@ -32,6 +34,9 @@ function App() {
             
             {/* SEO Deep-links */}
             <Route path="/catchment/:schoolSlug" element={<MapView />} />
+
+            <Route path="/about" element={<About />} />
+            <Route path="/privacy" element={<Privacy />} />
             
             {/* 3. TRUE REDIRECT: Changes URL bar back to home if a typo occurs */}
             <Route path="*" element={<Navigate to="/" replace />} />
