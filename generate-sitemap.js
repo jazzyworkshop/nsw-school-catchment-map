@@ -4,8 +4,7 @@ const path = require("path");
 // 1. Load the object
 const schoolData = require("./public/catchments.json");
 
-// 2. Reach into the object.
-// Replace 'schools' with whatever your key name is (e.g., 'data' or 'list')
+// 2. Reach into the object
 const schoolsArray = schoolData.schools;
 
 const BASE_URL = "https://localschoolmap.com";
@@ -16,11 +15,11 @@ const generateSitemap = () => {
     console.error(
       "❌ Error: 'schoolsArray' is not an array. Check your JSON key name!",
     );
-    // This logs the keys so you can see what the correct name should be
     console.log("Your JSON keys are:", Object.keys(schoolData));
     return;
   }
 
+  // Generate entries for all dynamic catchment pages
   const sitemapEntries = schoolsArray
     .map((school) => {
       const slug = school.name
@@ -39,15 +38,20 @@ const generateSitemap = () => {
     })
     .join("");
 
+  // Build the complete sitemap XML string (Injecting the new pages right under the homepage link)
   const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>${BASE_URL}</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
+  <url><loc>${BASE_URL}/about</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>${BASE_URL}/privacy</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
 ${sitemapEntries}
 </urlset>`;
 
   fs.writeFileSync("./public/sitemap.xml", sitemap);
+  
+  // Adjusted log count to account for the home page + 2 new additions
   console.log(
-    `✅ Success! Generated sitemap with ${schoolsArray.length} links.`,
+    `✅ Success! Generated sitemap with ${schoolsArray.length + 3} total structural links.`,
   );
 };
 
