@@ -1512,18 +1512,30 @@ const handleMinimizeSchoolCard = useCallback(() => {
         if (!res.ok) throw new Error(`Catchment fetch failed: ${res.status}`);
 
         const topology = await res.json();
+        if (!topology || !topology.objects) {
+          throw new Error("Invalid TopoJSON data structure received");
+        }
         const objectKey = Object.keys(topology.objects || {})[0];
         if (!objectKey) throw new Error("Invalid TopoJSON data");
 
-        const decodedData = topojson.feature(topology, topology.objects[objectKey]);
+        const topoClient = topojson.feature ? topojson : (topojson.default || window.topojson);
+        if (!topoClient || typeof topoClient.feature !== 'function') {
+          throw new Error("The topojson library methods could not be resolved by Vite");
+        }
 
-        if (cancelled) return;
+        const decodedData = topoClient.feature(topology, topology.objects[objectKey]);
+
+       if (cancelled) return;
         window._catchmentCache = decodedData;
-        setGeoData(decodedData); // Triggers the useMemo above.
-        setCatchmentsReady(true);
+        setGeoData(decodedData); 
       } catch (err) {
         if (err.name !== "AbortError") {
           console.error("Catchment Load Error:", err);
+        }
+      } finally {
+        // Clear the loading screen even if the geo-decoding hits a bump
+        if (!cancelled) {
+          setCatchmentsReady(true);
         }
       }
     }
