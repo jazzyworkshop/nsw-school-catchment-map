@@ -403,15 +403,6 @@ const hasActiveFilters = useMemo(() =>
     typeFilters.length !== Object.keys(SCHOOL_COLORS).length
   , [genderFilter, ocFilter, selectiveFilter, showFuture, typeFilters]);
 
-// eslint-disable-next-line no-unused-vars
-  const _handleReset = () => {
-  setGenderFilter(DEFAULT_FILTERS.gender);
-  setOcFilter(DEFAULT_FILTERS.oc);
-  setSelectiveFilter(DEFAULT_FILTERS.selective);
-  setShowFuture(DEFAULT_FILTERS.future);
-  setTypeFilters(DEFAULT_FILTERS.types);
-};
-
 if (isTrueMobile && mobileLayout) {
     return (
       <>
@@ -1451,14 +1442,6 @@ function MapViewInner() {
       }
       return nextState;
     });
-  }, []);
-
-  // 💡 HOOK HANDLER: Call this whenever a school node item is selected on the map or search bar
-  // eslint-disable-next-line no-unused-vars
-  const _handleSelectSchool = useCallback((schoolItem) => {
-    setFilterOpen(false);      // Close filters expanded layout view
-    setSelectedSchool(schoolItem);
-    setSchoolCardOpen(false);   // Reset card sheet layout back to PEEK state on clear selection
   }, []);
 
   // 💡 HOOK HANDLER: Safely closes school card completely and brings back the filter peek bar
