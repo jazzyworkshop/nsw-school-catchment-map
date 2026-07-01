@@ -21,28 +21,22 @@
     "yaml": "^2.8.3"
   },
   "scripts": {
+    "dev": "vite",
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "node generate-sitemap.js && vite build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "deploy": "npm run build && wrangler deploy",
-    "preview": "npm run build && wrangler dev"
-  },
-"scripts": {
-    "dev": "vite",
-    "build": "node generate-sitemap.js && vite build",
     "preview": "vite preview"
-  }, 
-  "eslintConfig": {
-    "rules": {
-      "no-unused-vars": "warn"
-    }
-  }
+  },
   "eslintConfig": {
     "extends": [
       "react-app",
       "react-app/jest"
-    ]
+    ],
+    "rules": {
+      "no-unused-vars": "warn"
+    }
   },
   "browserslist": {
     "production": [
