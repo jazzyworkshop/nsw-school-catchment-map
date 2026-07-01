@@ -28,6 +28,11 @@
     "deploy": "npm run build && wrangler deploy",
     "preview": "npm run build && wrangler dev"
   },
+"scripts": {
+  "dev": "vite",
+  "build": "node generate-sitemap.js && vite build",
+  "preview": "vite preview"
+}
   "eslintConfig": {
     "extends": [
       "react-app",
