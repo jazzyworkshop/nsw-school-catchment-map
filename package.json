@@ -29,10 +29,15 @@
     "preview": "npm run build && wrangler dev"
   },
 "scripts": {
-  "dev": "vite",
-  "build": "node generate-sitemap.js && vite build",
-  "preview": "vite preview"
-}
+    "dev": "vite",
+    "build": "node generate-sitemap.js && vite build",
+    "preview": "vite preview"
+  }, 
+  "eslintConfig": {
+    "rules": {
+      "no-unused-vars": "warn"
+    }
+  }
   "eslintConfig": {
     "extends": [
       "react-app",
