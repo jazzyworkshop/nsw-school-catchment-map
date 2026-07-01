@@ -6,7 +6,7 @@
   Referrer-Policy: strict-origin-when-cross-origin
   X-Permitted-Cross-Domain-Policies: none
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.openstreetmap.org https://*.mapbox.com; connect-src 'self' https://nominatim.openstreetmap.org https://*.openstreetmap.org https://*.tiles.mapbox.com https://api.mapbox.com;
+ Content-Security-Policy: default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * 'unsafe-inline'; img-src * data: blob:; style-src * 'unsafe-inline';
 
 # Rules for your root JSON map datasets
 /*.json
