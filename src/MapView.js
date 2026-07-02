@@ -17,6 +17,9 @@ import * as turf from "@turf/turf";
 import * as topojson from "topojson-client";
 import Fuse from "fuse.js";
 import { motion, useAnimation } from "framer-motion";
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
 delete L.Icon.Default.prototype._getIconUrl;
 
@@ -1507,7 +1510,7 @@ const handleMinimizeSchoolCard = useCallback(() => {
         return;
       }
 
-      try {
+try {
         const res = await fetch("/catchments.json", { signal: controller.signal });
         if (!res.ok) throw new Error(`Catchment fetch failed: ${res.status}`);
 
@@ -1515,19 +1518,15 @@ const handleMinimizeSchoolCard = useCallback(() => {
         if (!topology || !topology.objects) {
           throw new Error("Invalid TopoJSON data structure received");
         }
-        const objectKey = Object.keys(topology.objects || {})[0];
-        if (!objectKey) throw new Error("Invalid TopoJSON data");
 
-        const topoClient = topojson.feature ? topojson : (topojson.default || window.topojson);
-        if (!topoClient || typeof topoClient.feature !== 'function') {
-          throw new Error("The topojson library methods could not be resolved by Vite");
-        }
+        const objectKey = Object.keys(topology.objects)[0];
+        if (!objectKey) throw new Error("Invalid TopoJSON data: objects map is empty");
 
-        const decodedData = topoClient.feature(topology, topology.objects[objectKey]);
-
-       if (cancelled) return;
-        window._catchmentCache = decodedData;
-        setGeoData(decodedData); 
+        if (cancelled) return;
+        
+        // Cache and save the raw topology data directly
+        window._catchmentCache = topology;
+        setGeoData(topology); 
       } catch (err) {
         if (err.name !== "AbortError") {
           console.error("Catchment Load Error:", err);

@@ -20,15 +20,12 @@
     "web-vitals": "^2.1.4",
     "yaml": "^2.8.3"
   },
-  "scripts": {
-    "dev": "vite",
-    "start": "react-scripts start",
-    "build": "node generate-sitemap.js && vite build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "deploy": "npm run build && wrangler deploy",
-    "preview": "vite preview"
-  },
+"scripts": {
+  "start": "react-scripts start",
+  "build": "react-scripts build",
+  "test": "react-scripts test",
+  "eject": "react-scripts eject"
+},
   "eslintConfig": {
     "extends": [
       "react-app",
@@ -51,8 +48,6 @@
     ]
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^5.4.11",
     "wrangler": "^4.86.0"
   }
 }
