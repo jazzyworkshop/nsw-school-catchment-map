@@ -11,29 +11,17 @@ root.render(
   </React.StrictMode>,
 );
 
+// Actively unregister and clear any existing service workers causing network hangs
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("/sw.js")
-      .then((registration) => {
-        console.log("✓ PWA Service Worker active:", registration.scope);
-
-        registration.onupdatefound = () => {
-          const installingWorker = registration.installing;
-          if (installingWorker) {
-            installingWorker.onstatechange = () => {
-              if (installingWorker.state === "installed") {
-                if (navigator.serviceWorker.controller) {
-                  console.log("New content available; please refresh.");
-                }
-              }
-            };
-          }
-        };
-      })
-      .catch((error) => {
-        console.error("PWA Service Worker registration failed:", error);
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (let registration of registrations) {
+      registration.unregister().then(() => {
+        console.log("🧹 Broken Service Worker successfully cleared out.");
       });
+    }
+  }).catch((error) => {
+    console.error("Error clearing service worker:", error);
   });
 }
+
 reportWebVitals();
