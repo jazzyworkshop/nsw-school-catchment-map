@@ -1523,10 +1523,13 @@ try {
         if (!objectKey) throw new Error("Invalid TopoJSON data: objects map is empty");
 
         if (cancelled) return;
+
+         const geoData = topojson.feature(topology, topology.objects[objectKey]);
         
         // Cache and save the raw topology data directly
-        window._catchmentCache = topology;
-        setGeoData(topology); 
+        window._catchmentCache = geoData;
+        setGeoData(geoData); 
+        
       } catch (err) {
         if (err.name !== "AbortError") {
           console.error("Catchment Load Error:", err);
@@ -1629,25 +1632,53 @@ try {
   }, [showFuture, futureCatchments]);
 
   const ensureCatchmentCache = useCallback(async () => {
-    if (!window._catchmentCache) {
+  if (!window._catchmentCache) {
+    try {
+      console.log("📡 Fetching /catchments.json ...");
+
+      const res = await fetch("/catchments.json");
+      console.log("🔎 Response status:", res.status);
+
+      const rawText = await res.text();
+      console.log("📄 Raw catchments.json (first 300 chars):", rawText.slice(0, 300));
+
+      let topology;
       try {
-        const res = await fetch("/catchments.json");
-        const topology = await res.json();
-
-        const objectKey = Object.keys(topology.objects)[0];
-        const geoData = topojson.feature(topology, topology.objects[objectKey]);
-
-        window._catchmentCache = geoData;
-
-        console.log(`✓ Catchment cache initialized (${objectKey})`);
-        console.log("Sample Properties:", geoData.features[0].properties);
-      } catch (err) {
-        console.error("Failed to initialize catchment cache:", err);
+        topology = JSON.parse(rawText);
+      } catch (parseErr) {
+        console.error("❌ JSON parse error:", parseErr);
         return null;
       }
+
+      console.log("🧩 topology.objects keys:", Object.keys(topology.objects));
+
+      const objectKey = Object.keys(topology.objects)[0];
+      if (!objectKey) {
+        console.error("❌ No objects found in topology.objects");
+        return null;
+      }
+
+      const geoData = topojson.feature(topology, topology.objects[objectKey]);
+
+      if (!geoData || !geoData.features || geoData.features.length === 0) {
+        console.error("❌ geoData is empty or invalid:", geoData);
+        return null;
+      }
+
+      window._catchmentCache = geoData;
+
+      console.log(`✓ Catchment cache initialized (${objectKey})`);
+      console.log("🔍 Sample Properties:", geoData.features[0].properties);
+
+    } catch (err) {
+      console.error("❌ Failed to initialize catchment cache:", err);
+      return null;
     }
-    return window._catchmentCache;
-  }, []);
+  }
+
+  return window._catchmentCache;
+}, []);
+
 
   useEffect(() => {
     if (selectedSchool && selectedSchool.name) {
@@ -1723,7 +1754,7 @@ try {
         !catchmentIndex ||
         Object.keys(catchmentIndex).length === 0
       ) {
-        console.warn("Catchment data is still initializing...");
+        console.warn("⏳ Waiting for catchment cache...");
         setActiveCatchment(null);
         return;
       }
